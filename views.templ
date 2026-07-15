@@ -9,12 +9,35 @@ templ page(products []product) {
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<title>Product catalogue</title>
+			<link rel="preconnect" href="https://fonts.googleapis.com"/>
+			<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+			<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&amp;family=Playfair+Display:ital,wght@0,700;1,600&amp;display=swap" rel="stylesheet"/>
 			<link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css"/>
 			<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 			<script src="https://unpkg.com/htmx.org@2.0.6"></script>
+			<style>
+				body { font-family: "DM Sans", sans-serif; }
+				.greeting-title, .greeting-poem { font-family: "Playfair Display", serif; }
+			</style>
 		</head>
 		<body class="min-h-screen bg-base-200">
 			<main class="mx-auto max-w-5xl p-6 lg:p-10">
+				<section class="relative mb-10 overflow-hidden rounded-3xl bg-gradient-to-br from-amber-100 via-rose-100 to-violet-200 px-6 py-12 text-slate-800 shadow-xl sm:px-12 lg:py-16">
+					<div class="pointer-events-none absolute -right-12 -top-12 h-44 w-44 rounded-full bg-white/40 blur-2xl"></div>
+					<div class="pointer-events-none absolute -bottom-16 -left-10 h-48 w-48 rounded-full bg-amber-300/30 blur-3xl"></div>
+					<div class="relative max-w-3xl">
+						<p class="mb-4 text-sm font-bold uppercase tracking-[0.28em] text-violet-700">Specjalnie dla Ciebie</p>
+						<h1 class="greeting-title text-5xl font-bold leading-tight sm:text-6xl">Danielu, serdeczne pozdrowienia!</h1>
+						<div class="greeting-poem my-8 border-l-4 border-rose-400 pl-6 text-xl italic leading-relaxed sm:text-2xl">
+							<p>Niech każdy poranek dobry rytm Ci nada,</p>
+							<p>a każda przeszkoda w przygodę się składa.</p>
+							<p>Niech pomysłów wystarcza od świtu do nocy,</p>
+							<p>i zawsze ktoś życzliwy dorzuci Ci mocy.</p>
+						</div>
+						<p class="max-w-2xl text-lg leading-relaxed">Od nas — dużo uśmiechu, spokoju i powodów do dumy. Niech Ci się wiedzie, Daniel, w małych planach i wielkich marzeniach!</p>
+						<p class="mt-5 font-bold text-violet-800">Trzymaj się ciepło! 👋</p>
+					</div>
+				</section>
 				<div class="mb-8">
 					<div class="badge badge-primary badge-outline mb-3">GOTH stack</div>
 					<h1 class="text-4xl font-bold">Product catalogue</h1>

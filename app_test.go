@@ -44,6 +44,24 @@ func TestProductValidationAndHealth(t *testing.T) {
 	}
 }
 
+func TestIndexIncludesGreetingForDaniel(t *testing.T) {
+	handler := newApp(newProductStore())
+	response := request(t, handler, http.MethodGet, "/", nil)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("index response status = %d", response.Code)
+	}
+	for _, text := range []string{
+		"Danielu, serdeczne pozdrowienia!",
+		"Niech każdy poranek dobry rytm Ci nada",
+		"Trzymaj się ciepło!",
+	} {
+		if !strings.Contains(response.Body.String(), text) {
+			t.Errorf("index response does not contain %q", text)
+		}
+	}
+}
+
 func request(t *testing.T, handler http.Handler, method, target string, values url.Values) *httptest.ResponseRecorder {
 	t.Helper()
 	var body *strings.Reader
