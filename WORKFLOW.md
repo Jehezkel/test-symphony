@@ -2,7 +2,7 @@
 
 tracker:
 kind: linear
-project_slug: "TU_WSTAW_SLUG_PROJEKTU_LINEAR"
+project_slug: "test-symphony-409594645a94"
 required_labels:
 - symphony
 active_states:
