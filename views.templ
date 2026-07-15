@@ -1,0 +1,70 @@
+package main
+
+import "strconv"
+
+templ page(products []product) {
+	<!doctype html>
+	<html lang="en" data-theme="corporate">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>Product catalogue</title>
+			<link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css"/>
+			<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+			<script src="https://unpkg.com/htmx.org@2.0.6"></script>
+		</head>
+		<body class="min-h-screen bg-base-200">
+			<main class="mx-auto max-w-5xl p-6 lg:p-10">
+				<div class="mb-8">
+					<div class="badge badge-primary badge-outline mb-3">GOTH stack</div>
+					<h1 class="text-4xl font-bold">Product catalogue</h1>
+					<p class="mt-2 text-base-content/70">A tiny in-memory CRUD built with Go, templ, HTMX, and DaisyUI.</p>
+				</div>
+				<section class="card bg-base-100 shadow-xl">
+					<div class="card-body">
+						<h2 class="card-title">Add a product</h2>
+						<form class="grid gap-3 md:grid-cols-4" hx-post="/products" hx-target="#product-rows" hx-swap="beforeend" hx-on::after-request="if(event.detail.successful) this.reset()">
+							<input class="input input-bordered w-full" name="name" placeholder="Name" required/>
+							<input class="input input-bordered w-full" name="price" type="number" min="0" step="0.01" placeholder="Price" required/>
+							<input class="input input-bordered w-full" name="ean" placeholder="EAN" required/>
+							<button class="btn btn-primary" type="submit">Add product</button>
+						</form>
+						<div class="overflow-x-auto mt-6">
+							<table class="table table-zebra">
+								<thead><tr><th>Name</th><th>Price</th><th>EAN</th><th class="text-right">Actions</th></tr></thead>
+								<tbody id="product-rows">
+									for _, item := range products {
+										@productRow(item)
+									}
+								</tbody>
+							</table>
+						</div>
+					</div>
+				</section>
+			</main>
+		</body>
+	</html>
+}
+
+templ productRow(item product) {
+	<tr id={ "product-" + strconv.Itoa(item.ID) }>
+		<td class="font-medium">{ item.Name }</td><td>{ item.Price }</td><td>{ item.EAN }</td>
+		<td class="text-right space-x-2">
+			<button class="btn btn-sm btn-ghost" hx-get={ "/products/" + strconv.Itoa(item.ID) + "/edit" } hx-target={ "#product-" + strconv.Itoa(item.ID) } hx-swap="outerHTML">Edit</button>
+			<button class="btn btn-sm btn-error btn-outline" hx-delete={ "/products/" + strconv.Itoa(item.ID) } hx-target={ "#product-" + strconv.Itoa(item.ID) } hx-swap="outerHTML" hx-confirm="Delete this product?">Delete</button>
+		</td>
+	</tr>
+}
+
+templ productEditRow(item product) {
+	<tr id={ "product-" + strconv.Itoa(item.ID) }>
+		<td colspan="4">
+			<form class="grid gap-2 md:grid-cols-4" hx-put={ "/products/" + strconv.Itoa(item.ID) } hx-target={ "#product-" + strconv.Itoa(item.ID) } hx-swap="outerHTML">
+				<input class="input input-sm input-bordered" name="name" value={ item.Name } required/>
+				<input class="input input-sm input-bordered" name="price" type="number" min="0" step="0.01" value={ item.Price } required/>
+				<input class="input input-sm input-bordered" name="ean" value={ item.EAN } required/>
+				<button class="btn btn-sm btn-success" type="submit">Save</button>
+			</form>
+		</td>
+	</tr>
+}
