@@ -38,11 +38,11 @@ func TestUserDataIsolationForReadAndModification(t *testing.T) {
 	firstCookie := sessionCookie(t, auth, first.ID)
 	secondCookie := sessionCookie(t, auth, second.ID)
 
-	firstIndex := authenticatedRequest(handler, firstCookie, http.MethodGet, "/", nil)
+	firstIndex := authenticatedRequest(handler, firstCookie, http.MethodGet, "/products", nil)
 	if firstIndex.Code != http.StatusOK || !strings.Contains(firstIndex.Body.String(), "First private product") || strings.Contains(firstIndex.Body.String(), "Second private product") {
 		t.Fatalf("first index leaked data: %d %q", firstIndex.Code, firstIndex.Body.String())
 	}
-	secondIndex := authenticatedRequest(handler, secondCookie, http.MethodGet, "/", nil)
+	secondIndex := authenticatedRequest(handler, secondCookie, http.MethodGet, "/products", nil)
 	if secondIndex.Code != http.StatusOK || !strings.Contains(secondIndex.Body.String(), "Second private product") || strings.Contains(secondIndex.Body.String(), "First private product") {
 		t.Fatalf("second index leaked data: %d %q", secondIndex.Code, secondIndex.Body.String())
 	}
@@ -230,7 +230,7 @@ func TestAuthenticationMiddlewareLoginCookieAndLogout(t *testing.T) {
 	}
 
 	authorized := httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodGet, "/", nil)
+	req = httptest.NewRequest(http.MethodGet, "/products", nil)
 	req.AddCookie(cookies[0])
 	handler.ServeHTTP(authorized, req)
 	if authorized.Code != http.StatusOK {
@@ -256,11 +256,53 @@ func TestAuthenticationMiddlewareLoginCookieAndLogout(t *testing.T) {
 	}
 
 	rejected := httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodGet, "/", nil)
+	req = httptest.NewRequest(http.MethodGet, "/products", nil)
 	req.AddCookie(cookies[0])
 	handler.ServeHTTP(rejected, req)
 	if rejected.Code != http.StatusSeeOther {
 		t.Fatalf("revoked cookie response = %d", rejected.Code)
+	}
+}
+
+func TestLandingIsPublicAndCTAsAreFunctional(t *testing.T) {
+	db, err := openDatabase(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	auth := newAuthService(db, time.Hour, false)
+	if err := auth.ensureUser(t.Context(), "owner@example.com", "Owner", "StrongPassword1"); err != nil {
+		t.Fatal(err)
+	}
+	handler := newAuthenticatedApp(newProductStore(db), nil, auth)
+
+	landing := httptest.NewRecorder()
+	handler.ServeHTTP(landing, httptest.NewRequest(http.MethodGet, "/", nil))
+	body := landing.Body.String()
+	if landing.Code != http.StatusOK {
+		t.Fatalf("landing status = %d: %s", landing.Code, body)
+	}
+	for _, want := range []string{"Sprawdź, ile naprawdę zarabiasz na Allegro", `href="/register"`, `href="/login"`, `id="korzysci"`, `id="jak-to-dziala"`, `id="cennik"`, `id="faq"`, `name="description"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("landing does not contain %q", want)
+		}
+	}
+
+	for _, path := range []string{"/login", "/register"} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if response.Code != http.StatusOK {
+			t.Errorf("anonymous CTA %s = %d", path, response.Code)
+		}
+	}
+
+	cookie := sessionCookie(t, auth, 1)
+	cta := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/register", nil)
+	req.AddCookie(cookie)
+	handler.ServeHTTP(cta, req)
+	if cta.Code != http.StatusSeeOther || cta.Header().Get("Location") != "/dashboard" {
+		t.Fatalf("authenticated CTA = %d %q", cta.Code, cta.Header().Get("Location"))
 	}
 }
 

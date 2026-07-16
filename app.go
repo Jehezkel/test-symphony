@@ -100,13 +100,14 @@ func newAuthenticatedApp(products *productStore, allegro *allegroService, auth *
 	a := &app{products: products, profits: newProfitabilityEngine(products.db), allegro: allegro, auth: auth, enforceOnboarding: true}
 	public := http.NewServeMux()
 	public.HandleFunc("GET /health", a.health)
+	public.HandleFunc("GET /{$}", a.landing)
 	public.HandleFunc("GET /login", a.loginPage)
 	public.HandleFunc("POST /login", a.login)
 	public.HandleFunc("GET /register", a.registerPage)
 	public.HandleFunc("POST /register", a.register)
 
 	protected := http.NewServeMux()
-	protected.HandleFunc("GET /", a.index)
+	protected.HandleFunc("GET /products", a.index)
 	protected.HandleFunc("GET /onboarding", a.onboarding)
 	protected.HandleFunc("POST /logout", a.logout)
 	protected.HandleFunc("POST /products", a.createProduct)
@@ -405,7 +406,7 @@ func (a *app) health(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (a *app) index(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
+	if r.URL.Path != "/" && r.URL.Path != "/products" {
 		http.NotFound(w, r)
 		return
 	}
@@ -416,6 +417,17 @@ func (a *app) index(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := page(products).Render(r.Context(), w); err != nil {
 		http.Error(w, "render page", http.StatusInternalServerError)
+	}
+}
+
+func (a *app) landing(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := landingPage().Render(r.Context(), w); err != nil {
+		http.Error(w, "render landing page", http.StatusInternalServerError)
 	}
 }
 
