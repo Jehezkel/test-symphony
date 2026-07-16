@@ -29,7 +29,18 @@ func newApp(products *productStore, services ...*allegroService) http.Handler {
 	mux.HandleFunc("GET /oauth/allegro/start", a.allegroStart)
 	mux.HandleFunc("GET /oauth/allegro/callback", a.allegroCallback)
 	mux.HandleFunc("POST /integration/allegro/disconnect", a.allegroDisconnect)
+	mux.HandleFunc("POST /integration/allegro/sync", a.allegroSync)
 	return mux
+}
+
+func (a *app) allegroSync(w http.ResponseWriter, r *http.Request) {
+	message := "Synchronizacja zakończona pomyślnie."
+	if a.allegro == nil {
+		message = "Integracja Allegro nie jest skonfigurowana."
+	} else if err := a.allegro.synchronize(r.Context(), 1, "manual"); err != nil {
+		message = "Synchronizacja nie powiodła się. Można ją bezpiecznie ponowić."
+	}
+	http.Redirect(w, r, "/integration/allegro?message="+url.QueryEscape(message), http.StatusSeeOther)
 }
 
 func (a *app) allegroStatus(w http.ResponseWriter, r *http.Request) {

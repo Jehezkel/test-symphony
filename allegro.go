@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -84,6 +85,7 @@ type allegroIntegration struct {
 type integrationStatus struct {
 	Configured, Connected bool
 	AccountID, Message    string
+	Sync                  syncStatus
 }
 
 type allegroService struct {
@@ -91,6 +93,7 @@ type allegroService struct {
 	config     allegroConfig
 	httpClient *http.Client
 	now        func() time.Time
+	syncMu     sync.Mutex
 }
 
 func newAllegroService(db *sql.DB, config allegroConfig, client *http.Client) *allegroService {
@@ -333,6 +336,7 @@ func (s *allegroService) status(ctx context.Context, userID int64, message strin
 	if err == nil {
 		status.Connected = true
 		status.AccountID = i.AccountID
+		status.Sync = s.latestSync(ctx, userID)
 	}
 	return status
 }

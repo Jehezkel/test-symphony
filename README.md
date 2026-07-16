@@ -23,6 +23,14 @@ Register the configured `ALLEGRO_REDIRECT_URL` exactly in the Allegro developer
 application. The local default callback is
 `http://localhost:8080/oauth/allegro/callback`.
 
+After connecting an account, offers, orders with their line items, and billing
+entries can be synchronized manually from the integration page. The same
+idempotent synchronization runs every 15 minutes by default. Set
+`ALLEGRO_SYNC_INTERVAL_MINUTES` to a positive number to change the interval or
+to `0` to disable scheduled runs. Each API page is committed atomically, and the
+last successful checkpoint and run result are retained so interrupted runs can
+be safely retried.
+
 ## Symphony workflow
 
 [workflow.md](workflow.md) is the single source of truth for Symphony task

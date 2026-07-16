@@ -18,6 +18,8 @@ Dokploy tracks `Jehezkel/test-symphony` on the `develop` branch through the exis
   values only in Dokploy; never copy them into repository files or deployment
   logs. `ALLEGRO_AUTHORIZE_URL`, `ALLEGRO_TOKEN_URL`, and `ALLEGRO_API_URL` are
   optional and select production Allegro by default. `PORT` defaults to `8080`;
+  `ALLEGRO_SYNC_INTERVAL_MINUTES` is optional and defaults to `15` (`0`
+  disables periodic synchronization);
   `DATABASE_PATH` defaults to `/data/app.db` in the image. The image declares
   `/data` as the persistent SQLite volume.
 

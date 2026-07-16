@@ -68,6 +68,18 @@ templ allegroPage(status integrationStatus) {
 				<div class="badge badge-success badge-lg mt-4">Połączono</div>
 				<p>Konto: <strong>{ status.AccountID }</strong></p>
 				<p class="text-sm text-base-content/70">Dostęp jest bezpiecznie przechowywany i odnawiany automatycznie.</p>
+				<form method="post" action="/integration/allegro/sync"><button class="btn btn-primary" type="submit">Synchronizuj teraz</button></form>
+				if status.Sync.Status != "" {
+					<div class="divider">Ostatnia synchronizacja</div>
+					<p><strong>Stan:</strong> { status.Sync.Status } · <strong>Etap:</strong> { status.Sync.Phase } · <strong>Rekordy:</strong> { strconv.Itoa(status.Sync.Processed) }</p>
+					<p class="text-sm text-base-content/70">Start: { status.Sync.StartedAt }</p>
+					if status.Sync.FinishedAt != "" {
+						<p class="text-sm text-base-content/70">Koniec: { status.Sync.FinishedAt }</p>
+					}
+					if status.Sync.Error != "" {
+						<div class="alert alert-error">{ status.Sync.Error }</div>
+					}
+				}
 				<form method="post" action="/integration/allegro/disconnect"><button class="btn btn-error btn-outline" type="submit">Rozłącz konto</button></form>
 			} else {
 				<div class="badge badge-ghost badge-lg mt-4">Niepołączono</div>
