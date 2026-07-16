@@ -42,11 +42,12 @@ type parsedCostRow struct {
 	currency  string
 }
 
-func (s *productStore) listCosts(ctx context.Context) ([]productCostItem, error) {
+func (s *productStore) listCosts(ctx context.Context, userID int64) ([]productCostItem, error) {
 	// Older synchronized offers may predate automatic product association.
 	if _, err := s.db.ExecContext(ctx, `UPDATE allegro_offers
 		SET product_id = (SELECT p.id FROM products p JOIN allegro_integrations i ON i.user_id=p.user_id WHERE i.id=allegro_offers.integration_id AND (p.sku=allegro_offers.external_sku OR p.ean=allegro_offers.external_sku) ORDER BY p.id LIMIT 1)
-		WHERE product_id IS NULL AND external_sku IS NOT NULL`); err != nil {
+		WHERE product_id IS NULL AND external_sku IS NOT NULL
+		AND integration_id IN (SELECT id FROM allegro_integrations WHERE user_id=?)`, userID); err != nil {
 		return nil, fmt.Errorf("associate offers: %w", err)
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT p.id,p.sku,COALESCE(p.ean,''),p.name,
@@ -54,7 +55,7 @@ func (s *productStore) listCosts(ctx context.Context) ([]productCostItem, error)
 		COALESCE((SELECT pc.currency FROM product_costs pc WHERE pc.product_id=p.id AND pc.valid_from<=CURRENT_TIMESTAMP ORDER BY pc.valid_from DESC,pc.id DESC LIMIT 1),''),
 		COALESCE(GROUP_CONCAT(o.allegro_offer_id || ' — ' || o.name, ' | '),'')
 		FROM products p LEFT JOIN allegro_offers o ON o.product_id=p.id
-		WHERE p.user_id=1 GROUP BY p.id ORDER BY p.sku`)
+		WHERE p.user_id=? GROUP BY p.id ORDER BY p.sku`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list product costs: %w", err)
 	}
@@ -75,13 +76,13 @@ func (s *productStore) listCosts(ctx context.Context) ([]productCostItem, error)
 	return items, rows.Err()
 }
 
-func (s *productStore) setCost(ctx context.Context, productID, cost int64, currency, source string) error {
+func (s *productStore) setCost(ctx context.Context, userID, productID, cost int64, currency, source string) error {
 	if cost < 0 || currency != "PLN" || (source != "manual" && source != "import") {
 		return errors.New("invalid product cost")
 	}
 	result, err := s.db.ExecContext(ctx, `INSERT INTO product_costs(product_id,unit_cost_minor,currency,valid_from,source,source_key)
-		SELECT id,?,?,?,?,? FROM products WHERE id=? AND user_id=1
-		ON CONFLICT(product_id,valid_from,currency) DO UPDATE SET unit_cost_minor=excluded.unit_cost_minor,source=excluded.source,source_key=excluded.source_key,updated_at=CURRENT_TIMESTAMP`, cost, currency, baselineCostDate, source, source, productID)
+		SELECT id,?,?,?,?,? FROM products WHERE id=? AND user_id=?
+		ON CONFLICT(product_id,valid_from,currency) DO UPDATE SET unit_cost_minor=excluded.unit_cost_minor,source=excluded.source,source_key=excluded.source_key,updated_at=CURRENT_TIMESTAMP`, cost, currency, baselineCostDate, source, source, productID, userID)
 	if err != nil {
 		return fmt.Errorf("set product cost: %w", err)
 	}
@@ -93,7 +94,7 @@ func (s *productStore) setCost(ctx context.Context, productID, cost int64, curre
 	return nil
 }
 
-func (s *productStore) importCosts(ctx context.Context, input io.Reader) (costImportReport, error) {
+func (s *productStore) importCosts(ctx context.Context, userID int64, input io.Reader) (costImportReport, error) {
 	report := costImportReport{}
 	reader := csv.NewReader(input)
 	reader.TrimLeadingSpace = true
@@ -142,7 +143,7 @@ func (s *productStore) importCosts(ctx context.Context, input io.Reader) (costIm
 			report.Skipped++
 			continue
 		}
-		productID, resolveErr := s.resolveCostProduct(ctx, headers, record)
+		productID, resolveErr := s.resolveCostProduct(ctx, userID, headers, record)
 		if resolveErr != nil {
 			report.Errors = append(report.Errors, costImportError{Row: rowNumber, Message: resolveErr.Error()})
 			continue
@@ -200,13 +201,13 @@ func (s *productStore) importCosts(ctx context.Context, input io.Reader) (costIm
 	return report, nil
 }
 
-func (s *productStore) resolveCostProduct(ctx context.Context, headers map[string]int, record []string) (int64, error) {
+func (s *productStore) resolveCostProduct(ctx context.Context, userID int64, headers map[string]int, record []string) (int64, error) {
 	type lookup struct{ column, query string }
 	lookups := []lookup{
-		{"sku", `SELECT id FROM products WHERE user_id=1 AND sku=?`},
-		{"external_id", `SELECT id FROM products WHERE user_id=1 AND sku=?`},
-		{"ean", `SELECT id FROM products WHERE user_id=1 AND ean=?`},
-		{"offer_id", `SELECT o.product_id FROM allegro_offers o JOIN allegro_integrations i ON i.id=o.integration_id WHERE i.user_id=1 AND o.allegro_offer_id=? AND o.product_id IS NOT NULL`},
+		{"sku", `SELECT id FROM products WHERE user_id=? AND sku=?`},
+		{"external_id", `SELECT id FROM products WHERE user_id=? AND sku=?`},
+		{"ean", `SELECT id FROM products WHERE user_id=? AND ean=?`},
+		{"offer_id", `SELECT o.product_id FROM allegro_offers o JOIN allegro_integrations i ON i.id=o.integration_id WHERE i.user_id=? AND o.allegro_offer_id=? AND o.product_id IS NOT NULL`},
 	}
 	provided := false
 	for _, item := range lookups {
@@ -216,7 +217,7 @@ func (s *productStore) resolveCostProduct(ctx context.Context, headers map[strin
 		}
 		provided = true
 		var id int64
-		err := s.db.QueryRowContext(ctx, item.query, field(record, index)).Scan(&id)
+		err := s.db.QueryRowContext(ctx, item.query, userID, field(record, index)).Scan(&id)
 		if err == nil {
 			return id, nil
 		}

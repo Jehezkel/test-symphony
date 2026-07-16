@@ -137,7 +137,11 @@ func (a *app) dashboardOffer(w http.ResponseWriter, r *http.Request) {
 func (a *app) loadDashboard(ctx context.Context, rng dashboardRange, sortBy string) (dashboardData, error) {
 	data := dashboardData{Range: rng, Sort: sortBy, KPI: dashboardKPI{Currency: "PLN"}}
 	to, _ := time.Parse("2006-01-02", rng.To)
-	rows, err := a.products.db.QueryContext(ctx, `SELECT o.id,o.allegro_order_id,o.bought_at FROM allegro_orders o JOIN allegro_integrations i ON i.id=o.integration_id WHERE i.user_id=? AND o.bought_at>=? AND o.bought_at<? ORDER BY o.bought_at,o.id`, 1, rng.From, to.AddDate(0, 0, 1).Format("2006-01-02"))
+	u, ok := currentUser(ctx)
+	if !ok {
+		return data, errors.New("authenticated user missing")
+	}
+	rows, err := a.products.db.QueryContext(ctx, `SELECT o.id,o.allegro_order_id,o.bought_at FROM allegro_orders o JOIN allegro_integrations i ON i.id=o.integration_id WHERE i.user_id=? AND o.bought_at>=? AND o.bought_at<? ORDER BY o.bought_at,o.id`, u.ID, rng.From, to.AddDate(0, 0, 1).Format("2006-01-02"))
 	if err != nil {
 		return data, fmt.Errorf("load dashboard orders: %w", err)
 	}
@@ -159,7 +163,7 @@ func (a *app) loadDashboard(ctx context.Context, rng dashboardRange, sortBy stri
 	}
 	offers := map[int64]*dashboardOfferItem{}
 	for _, order := range orders {
-		result, err := a.profits.CalculateOrder(ctx, order.id)
+		result, err := a.profits.CalculateOrder(ctx, u.ID, order.id)
 		if err != nil {
 			return data, err
 		}
@@ -184,7 +188,7 @@ func (a *app) loadDashboard(ctx context.Context, rng dashboardRange, sortBy stri
 			item := offers[line.OfferID]
 			if item == nil {
 				item = &dashboardOfferItem{ID: line.OfferID, Currency: result.Currency}
-				err := a.products.db.QueryRowContext(ctx, `SELECT allegro_offer_id,name,COALESCE(external_sku,'') FROM allegro_offers WHERE id=?`, line.OfferID).Scan(&item.AllegroID, &item.Name, &item.SKU)
+				err := a.products.db.QueryRowContext(ctx, `SELECT o.allegro_offer_id,o.name,COALESCE(o.external_sku,'') FROM allegro_offers o JOIN allegro_integrations i ON i.id=o.integration_id WHERE o.id=? AND i.user_id=?`, line.OfferID, u.ID).Scan(&item.AllegroID, &item.Name, &item.SKU)
 				if err != nil && !errors.Is(err, sql.ErrNoRows) {
 					return data, err
 				}

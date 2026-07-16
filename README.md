@@ -8,6 +8,8 @@ go run .
 
 The database is migrated automatically at startup. Set `DATABASE_PATH` to choose its location; the default is `data/app.db`. Users can register in the browser. Optional `AUTH_EMAIL` and `AUTH_PASSWORD` create or update an initial account and must be set together; neither value is logged. `SESSION_TTL_HOURS` defaults to 24. Set `APP_ENV=production` in HTTPS deployments so the session cookie is marked `Secure`; it is always `HttpOnly` and `SameSite=Lax`.
 
+All products, costs, Allegro integrations, synchronized offers and orders, dashboard calculations, and CSV exports are scoped to the authenticated user. Existing development databases are assigned to the original local user (`id=1`); the first `AUTH_EMAIL`/`AUTH_PASSWORD` bootstrap claims that account. To discard development data instead, stop the application, remove only the configured SQLite file and its `-wal`/`-shm` companions, and restart so migrations create an empty database. Never reuse a production database for this reset procedure.
+
 Open <http://localhost:8080>. The service health endpoint is `GET /health`.
 
 ## Allegro OAuth
