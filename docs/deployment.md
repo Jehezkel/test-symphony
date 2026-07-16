@@ -12,6 +12,13 @@ Dokploy tracks `Jehezkel/test-symphony` on the `develop` branch through the exis
 
 - Application: <http://app-bypass-haptic-sensor-4ooyls-ed57d3-85-215-207-20.traefik.me>
 - Health check: <http://app-bypass-haptic-sensor-4ooyls-ed57d3-85-215-207-20.traefik.me/health>
-- Required environment variables: none. `PORT` is optional and defaults to `8080`; `DATABASE_PATH` defaults to `/data/app.db` in the image. The image declares `/data` as the persistent SQLite volume.
+- Required environment variables for Allegro OAuth: `ALLEGRO_CLIENT_ID`,
+  `ALLEGRO_CLIENT_SECRET`, `ALLEGRO_REDIRECT_URL`, and
+  `ALLEGRO_TOKEN_ENCRYPTION_KEY` (base64-encoded 32-byte key). Store their real
+  values only in Dokploy; never copy them into repository files or deployment
+  logs. `ALLEGRO_AUTHORIZE_URL`, `ALLEGRO_TOKEN_URL`, and `ALLEGRO_API_URL` are
+  optional and select production Allegro by default. `PORT` defaults to `8080`;
+  `DATABASE_PATH` defaults to `/data/app.db` in the image. The image declares
+  `/data` as the persistent SQLite volume.
 
 Deployments are triggered automatically by pushes to `develop`. For a new application with no checkout yet, call `POST /api/application.deploy` with the application ID so Dokploy clones the repository before building it. Use `POST /api/application.redeploy` only after a successful deployment has created the application checkout. Inspect the application and its deployment history in the Dokploy UI or through the authenticated Dokploy API. No manual configuration remains.

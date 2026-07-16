@@ -3,14 +3,21 @@ package main
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 )
 
-type app struct{ products *productStore }
+type app struct {
+	products *productStore
+	allegro  *allegroService
+}
 
-func newApp(products *productStore) http.Handler {
+func newApp(products *productStore, services ...*allegroService) http.Handler {
 	a := &app{products: products}
+	if len(services) > 0 {
+		a.allegro = services[0]
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", a.health)
 	mux.HandleFunc("GET /", a.index)
@@ -18,7 +25,62 @@ func newApp(products *productStore) http.Handler {
 	mux.HandleFunc("GET /products/{id}/edit", a.editProduct)
 	mux.HandleFunc("PUT /products/{id}", a.updateProduct)
 	mux.HandleFunc("DELETE /products/{id}", a.deleteProduct)
+	mux.HandleFunc("GET /integration/allegro", a.allegroStatus)
+	mux.HandleFunc("GET /oauth/allegro/start", a.allegroStart)
+	mux.HandleFunc("GET /oauth/allegro/callback", a.allegroCallback)
+	mux.HandleFunc("POST /integration/allegro/disconnect", a.allegroDisconnect)
 	return mux
+}
+
+func (a *app) allegroStatus(w http.ResponseWriter, r *http.Request) {
+	status := integrationStatus{Message: r.URL.Query().Get("message")}
+	if a.allegro != nil {
+		status = a.allegro.status(r.Context(), 1, status.Message)
+	}
+	if err := allegroPage(status).Render(r.Context(), w); err != nil {
+		http.Error(w, "render integration", http.StatusInternalServerError)
+	}
+}
+
+func (a *app) allegroStart(w http.ResponseWriter, r *http.Request) {
+	if a.allegro == nil {
+		http.Redirect(w, r, "/integration/allegro?message="+url.QueryEscape("Integracja Allegro nie jest skonfigurowana."), http.StatusSeeOther)
+		return
+	}
+	location, err := a.allegro.begin(r.Context(), 1)
+	if err != nil {
+		http.Redirect(w, r, "/integration/allegro?message="+url.QueryEscape("Nie udało się rozpocząć połączenia z Allegro."), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, location, http.StatusFound)
+}
+
+func (a *app) allegroCallback(w http.ResponseWriter, r *http.Request) {
+	message := "Konto Allegro zostało połączone."
+	if a.allegro == nil {
+		message = "Integracja Allegro nie jest skonfigurowana."
+	} else if err := a.allegro.consumeState(r.Context(), r.URL.Query().Get("state"), 1); err != nil {
+		message = "Sesja łączenia wygasła lub jest nieprawidłowa. Spróbuj ponownie."
+	} else if r.URL.Query().Get("error") != "" {
+		message = "Połączenie zostało odrzucone lub anulowane w Allegro."
+	} else if token, err := a.allegro.exchange(r.Context(), r.URL.Query().Get("code")); err != nil {
+		message = "Allegro nie zaakceptowało autoryzacji. Spróbuj ponownie później."
+	} else if accountID, err := a.allegro.accountID(r.Context(), token.AccessToken); err != nil {
+		message = "Nie udało się pobrać danych konta z Allegro."
+	} else if err := a.allegro.save(r.Context(), 1, accountID, token); err != nil {
+		message = "Nie udało się bezpiecznie zapisać połączenia."
+	}
+	http.Redirect(w, r, "/integration/allegro?message="+url.QueryEscape(message), http.StatusSeeOther)
+}
+
+func (a *app) allegroDisconnect(w http.ResponseWriter, r *http.Request) {
+	message := "Konto Allegro zostało rozłączone."
+	if a.allegro != nil {
+		if err := a.allegro.disconnect(r.Context(), 1); err != nil {
+			message = "Nie udało się rozłączyć konta Allegro."
+		}
+	}
+	http.Redirect(w, r, "/integration/allegro?message="+url.QueryEscape(message), http.StatusSeeOther)
 }
 
 func (a *app) health(w http.ResponseWriter, _ *http.Request) {

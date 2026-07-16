@@ -21,6 +21,7 @@ templ page(products []product) {
 		</head>
 		<body class="min-h-screen bg-base-200">
 			<main class="mx-auto max-w-5xl p-6 lg:p-10">
+				<a class="btn btn-outline btn-sm mb-5" href="/integration/allegro">Integracja Allegro</a>
 				<div class="mb-8">
 					<div class="badge badge-primary badge-outline mb-3">GOTH stack</div>
 					<h1 class="text-4xl font-bold">Product catalogue</h1>
@@ -49,6 +50,31 @@ templ page(products []product) {
 				</section>
 			</main>
 		</body>
+	</html>
+}
+
+templ allegroPage(status integrationStatus) {
+	<!doctype html>
+	<html lang="pl" data-theme="corporate">
+		<head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Integracja Allegro</title><link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css"/><script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script></head>
+		<body class="min-h-screen bg-base-200"><main class="mx-auto max-w-2xl p-6 lg:p-10"><a class="link" href="/">← Katalog</a><section class="card bg-base-100 shadow-xl mt-5"><div class="card-body"><h1 class="card-title text-3xl">Konto Allegro</h1>
+			if status.Message != "" {
+				<div class="alert alert-info mt-3">{ status.Message }</div>
+			}
+			if !status.Configured {
+				<div class="alert alert-warning mt-4">Integracja nie jest skonfigurowana w tym środowisku.</div>
+				<p class="text-base-content/70">Administrator musi ustawić wymagane zmienne środowiskowe.</p>
+			} else if status.Connected {
+				<div class="badge badge-success badge-lg mt-4">Połączono</div>
+				<p>Konto: <strong>{ status.AccountID }</strong></p>
+				<p class="text-sm text-base-content/70">Dostęp jest bezpiecznie przechowywany i odnawiany automatycznie.</p>
+				<form method="post" action="/integration/allegro/disconnect"><button class="btn btn-error btn-outline" type="submit">Rozłącz konto</button></form>
+			} else {
+				<div class="badge badge-ghost badge-lg mt-4">Niepołączono</div>
+				<p>Połącz konto, aby aplikacja mogła odczytywać oferty, zamówienia i opłaty.</p>
+				<a class="btn btn-primary" href="/oauth/allegro/start">Połącz konto Allegro</a>
+			}
+		</div></section></main></body>
 	</html>
 }
 
