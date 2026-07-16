@@ -87,3 +87,24 @@ func TestAllegroPageFailureRollsBackEveryRecord(t *testing.T) {
 		t.Fatalf("offer count = %d, %v", count, err)
 	}
 }
+
+func TestOfferWithoutSKUStillHasProductForCostAndOrderItem(t *testing.T) {
+	s, _, _ := testAllegro(t, http.NotFoundHandler())
+	if _, err := s.db.Exec(`INSERT INTO allegro_integrations(id,user_id,allegro_account_id) VALUES(1,1,'seller')`); err != nil {
+		t.Fatal(err)
+	}
+	price := struct {
+		Price allegroMoney `json:"price"`
+	}{Price: allegroMoney{Amount: "1.00", Currency: "PLN"}}
+	if err := s.storeOffers(context.Background(), 1, []allegroOffer{{ID: "offer-no-sku", Name: "Uncoded", Status: "ACTIVE", SellingMode: price}}); err != nil {
+		t.Fatal(err)
+	}
+	var productID int64
+	if err := s.db.QueryRow(`SELECT product_id FROM allegro_offers WHERE allegro_offer_id='offer-no-sku'`).Scan(&productID); err != nil || productID == 0 {
+		t.Fatalf("product id = %d, err = %v", productID, err)
+	}
+	report, err := newProductStore(s.db).importCosts(context.Background(), strings.NewReader("offer_id,unit_purchase_cost,currency\noffer-no-sku,4.20,PLN\n"))
+	if err != nil || report.Added != 1 || len(report.Errors) != 0 {
+		t.Fatalf("report = %+v, err = %v", report, err)
+	}
+}
