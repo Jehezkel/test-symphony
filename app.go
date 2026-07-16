@@ -11,10 +11,11 @@ import (
 type app struct {
 	products *productStore
 	allegro  *allegroService
+	profits  *profitabilityEngine
 }
 
 func newApp(products *productStore, services ...*allegroService) http.Handler {
-	a := &app{products: products}
+	a := &app{products: products, profits: newProfitabilityEngine(products.db)}
 	if len(services) > 0 {
 		a.allegro = services[0]
 	}
@@ -34,6 +35,9 @@ func newApp(products *productStore, services ...*allegroService) http.Handler {
 	mux.HandleFunc("GET /oauth/allegro/callback", a.allegroCallback)
 	mux.HandleFunc("POST /integration/allegro/disconnect", a.allegroDisconnect)
 	mux.HandleFunc("POST /integration/allegro/sync", a.allegroSync)
+	mux.HandleFunc("GET /dashboard", a.dashboard)
+	mux.HandleFunc("GET /dashboard/results", a.dashboardResults)
+	mux.HandleFunc("GET /dashboard/offers/{id}", a.dashboardOffer)
 	return mux
 }
 
