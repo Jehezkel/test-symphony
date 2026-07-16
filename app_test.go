@@ -9,7 +9,7 @@ import (
 )
 
 func TestProductCRUD(t *testing.T) {
-	handler := newApp(newProductStore())
+	handler := testHandler(t)
 
 	response := request(t, handler, http.MethodPost, "/products", url.Values{"name": {"Coffee"}, "price": {"12.50"}, "ean": {"5901234123457"}})
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Coffee") {
@@ -33,7 +33,7 @@ func TestProductCRUD(t *testing.T) {
 }
 
 func TestProductValidationAndHealth(t *testing.T) {
-	handler := newApp(newProductStore())
+	handler := testHandler(t)
 	response := request(t, handler, http.MethodPost, "/products", url.Values{"name": {"Coffee"}, "price": {"nope"}, "ean": {"123"}})
 	if response.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("invalid product response = %d", response.Code)
@@ -45,7 +45,7 @@ func TestProductValidationAndHealth(t *testing.T) {
 }
 
 func TestIndexDoesNotIncludeGreetingForDaniel(t *testing.T) {
-	handler := newApp(newProductStore())
+	handler := testHandler(t)
 	response := request(t, handler, http.MethodGet, "/", nil)
 
 	if response.Code != http.StatusOK {
@@ -60,6 +60,16 @@ func TestIndexDoesNotIncludeGreetingForDaniel(t *testing.T) {
 			t.Errorf("index response contains obsolete greeting %q", text)
 		}
 	}
+}
+
+func testHandler(t *testing.T) http.Handler {
+	t.Helper()
+	db, err := openDatabase(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return newApp(newProductStore(db))
 }
 
 func request(t *testing.T, handler http.Handler, method, target string, values url.Values) *httptest.ResponseRecorder {

@@ -53,19 +53,19 @@ templ page(products []product) {
 }
 
 templ productRow(item product) {
-	<tr id={ "product-" + strconv.Itoa(item.ID) }>
+	<tr id={ "product-" + strconv.FormatInt(item.ID, 10) }>
 		<td class="font-medium">{ item.Name }</td><td>{ item.Price }</td><td>{ item.EAN }</td>
 		<td class="text-right space-x-2">
-			<button class="btn btn-sm btn-ghost" hx-get={ "/products/" + strconv.Itoa(item.ID) + "/edit" } hx-target={ "#product-" + strconv.Itoa(item.ID) } hx-swap="outerHTML">Edit</button>
-			<button class="btn btn-sm btn-error btn-outline" hx-delete={ "/products/" + strconv.Itoa(item.ID) } hx-target={ "#product-" + strconv.Itoa(item.ID) } hx-swap="outerHTML" hx-confirm="Delete this product?">Delete</button>
+			<button class="btn btn-sm btn-ghost" hx-get={ "/products/" + strconv.FormatInt(item.ID, 10) + "/edit" } hx-target={ "#product-" + strconv.FormatInt(item.ID, 10) } hx-swap="outerHTML">Edit</button>
+			<button class="btn btn-sm btn-error btn-outline" hx-delete={ "/products/" + strconv.FormatInt(item.ID, 10) } hx-target={ "#product-" + strconv.FormatInt(item.ID, 10) } hx-swap="outerHTML" hx-confirm="Delete this product?">Delete</button>
 		</td>
 	</tr>
 }
 
 templ productEditRow(item product) {
-	<tr id={ "product-" + strconv.Itoa(item.ID) }>
+	<tr id={ "product-" + strconv.FormatInt(item.ID, 10) }>
 		<td colspan="4">
-			<form class="grid gap-2 md:grid-cols-4" hx-put={ "/products/" + strconv.Itoa(item.ID) } hx-target={ "#product-" + strconv.Itoa(item.ID) } hx-swap="outerHTML">
+			<form class="grid gap-2 md:grid-cols-4" hx-put={ "/products/" + strconv.FormatInt(item.ID, 10) } hx-target={ "#product-" + strconv.FormatInt(item.ID, 10) } hx-swap="outerHTML">
 				<input class="input input-sm input-bordered" name="name" value={ item.Name } required/>
 				<input class="input input-sm input-bordered" name="price" type="number" min="0" step="0.01" value={ item.Price } required/>
 				<input class="input input-sm input-bordered" name="ean" value={ item.EAN } required/>
