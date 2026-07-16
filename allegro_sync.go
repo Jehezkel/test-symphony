@@ -194,6 +194,18 @@ func (s *allegroService) storeOffers(ctx context.Context, integrationID int64, i
 			if o.External != nil {
 				sku = o.External.ID
 			}
+			productKey := sku
+			if productKey == "" {
+				productKey = "allegro:" + o.ID
+			}
+			_, err = tx.ExecContext(ctx, `INSERT INTO products(user_id,sku,name,current_price_minor,currency) SELECT user_id,?,?,?,? FROM allegro_integrations WHERE id=? ON CONFLICT(user_id,sku) DO UPDATE SET name=excluded.name,current_price_minor=excluded.current_price_minor,currency=excluded.currency,updated_at=CURRENT_TIMESTAMP`, productKey, o.Name, amount, o.SellingMode.Price.Currency, integrationID)
+			if err != nil {
+				return err
+			}
+			var productID int64
+			if err = tx.QueryRowContext(ctx, `SELECT p.id FROM products p JOIN allegro_integrations i ON i.user_id=p.user_id WHERE i.id=? AND p.sku=?`, integrationID, productKey).Scan(&productID); err != nil {
+				return err
+			}
 			status := o.Publication.Status
 			if status == "" {
 				status = o.Status
@@ -201,7 +213,7 @@ func (s *allegroService) storeOffers(ctx context.Context, integrationID int64, i
 			if status == "" {
 				return fmt.Errorf("offer %s is missing publication status", o.ID)
 			}
-			_, err = tx.ExecContext(ctx, `INSERT INTO allegro_offers(integration_id,allegro_offer_id,external_sku,name,status,current_price_minor,currency,source_updated_at,synced_at) VALUES(?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(integration_id,allegro_offer_id) DO UPDATE SET external_sku=excluded.external_sku,name=excluded.name,status=excluded.status,current_price_minor=excluded.current_price_minor,currency=excluded.currency,source_updated_at=excluded.source_updated_at,synced_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP`, integrationID, o.ID, nullString(sku), o.Name, status, amount, o.SellingMode.Price.Currency, nullString(o.UpdatedAt))
+			_, err = tx.ExecContext(ctx, `INSERT INTO allegro_offers(integration_id,product_id,allegro_offer_id,external_sku,name,status,current_price_minor,currency,source_updated_at,synced_at) VALUES(?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(integration_id,allegro_offer_id) DO UPDATE SET product_id=excluded.product_id,external_sku=excluded.external_sku,name=excluded.name,status=excluded.status,current_price_minor=excluded.current_price_minor,currency=excluded.currency,source_updated_at=excluded.source_updated_at,synced_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP`, integrationID, productID, o.ID, nullString(sku), o.Name, status, amount, o.SellingMode.Price.Currency, nullString(o.UpdatedAt))
 			if err != nil {
 				return err
 			}

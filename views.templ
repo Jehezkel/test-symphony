@@ -21,7 +21,7 @@ templ page(products []product) {
 		</head>
 		<body class="min-h-screen bg-base-200">
 			<main class="mx-auto max-w-5xl p-6 lg:p-10">
-				<a class="btn btn-outline btn-sm mb-5" href="/integration/allegro">Integracja Allegro</a>
+				<div class="flex gap-2 mb-5"><a class="btn btn-outline btn-sm" href="/integration/allegro">Integracja Allegro</a><a class="btn btn-primary btn-sm" href="/costs">Koszty zakupu</a></div>
 				<div class="mb-8">
 					<div class="badge badge-primary badge-outline mb-3">GOTH stack</div>
 					<h1 class="text-4xl font-bold">Product catalogue</h1>
@@ -51,6 +51,43 @@ templ page(products []product) {
 			</main>
 		</body>
 	</html>
+}
+
+templ costsPage(items []productCostItem, report *costImportReport) {
+	<!doctype html>
+	<html lang="pl" data-theme="corporate"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Koszty zakupu produktów</title><link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css"/><script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script></head>
+	<body class="min-h-screen bg-base-200"><main class="mx-auto max-w-7xl p-6 lg:p-10"><a class="link" href="/">← Katalog</a><h1 class="text-3xl font-bold mt-4">Koszty zakupu produktów</h1><p class="text-base-content/70 mt-2">Kwoty brutto za sztukę. Brak kosztu oznacza niepełny wynik marży.</p>
+		if report != nil {
+			<div class={ "alert mt-5", templ.KV("alert-error", len(report.Errors) > 0), templ.KV("alert-success", len(report.Errors) == 0) }><div><h2 class="font-bold">Raport importu</h2><p>Dodane: { strconv.Itoa(report.Added) } · Zaktualizowane: { strconv.Itoa(report.Updated) } · Pominięte: { strconv.Itoa(report.Skipped) } · Błędne: { strconv.Itoa(len(report.Errors)) }</p>
+			if len(report.Errors) > 0 {
+				<p class="font-semibold mt-2">Plik nie został zapisany — popraw wszystkie błędy i zaimportuj go ponownie.</p>
+				<ul class="list-disc ml-5 mt-2">
+					for _, problem := range report.Errors {
+						<li>Wiersz { strconv.Itoa(problem.Row) }: { problem.Message }</li>
+					}
+				</ul>
+			}
+			</div></div>
+		}
+		<section class="card bg-base-100 shadow-xl mt-6"><div class="card-body"><div class="flex flex-wrap justify-between gap-3"><h2 class="card-title">Import CSV</h2><a class="btn btn-outline btn-sm" href="/costs/template.csv">Pobierz szablon</a></div><form class="flex flex-wrap gap-3" method="post" action="/costs/import" enctype="multipart/form-data"><input class="file-input file-input-bordered" type="file" name="file" accept=".csv,text/csv" required/><button class="btn btn-primary" type="submit">Importuj i sprawdź</button></form></div></section>
+		<section class="card bg-base-100 shadow-xl mt-6"><div class="card-body"><h2 class="card-title">Produkty, SKU i przypisane oferty</h2><div class="overflow-x-auto"><table class="table table-zebra"><thead><tr><th>Produkt / SKU</th><th>EAN</th><th>Oferty Allegro</th><th>Status</th><th>Koszt brutto</th></tr></thead><tbody>
+		for _, item := range items {
+			<tr><td><strong>{ item.Name }</strong><br/><span class="font-mono text-xs">{ item.SKU }</span></td><td>{ item.EAN }</td><td class="max-w-md">
+				if item.Offers == "" {
+					<span class="text-base-content/50">Brak</span>
+				} else {
+					<span>{ item.Offers }</span>
+				}
+			</td><td>
+				if item.Missing {
+					<span class="badge badge-warning">Wymaga uzupełnienia</span>
+				} else {
+					<span class="badge badge-success">Koszt ustawiony</span>
+				}
+			</td><td><form class="flex gap-2" method="post" action={ "/costs/" + strconv.FormatInt(item.ID, 10) }><input class="input input-bordered input-sm w-28" name="unit_purchase_cost" inputmode="decimal" value={ item.Cost } placeholder="0.00" required/><select class="select select-bordered select-sm" name="currency"><option selected>PLN</option></select><button class="btn btn-primary btn-sm" type="submit">Zapisz</button></form></td></tr>
+		}
+		</tbody></table></div></div></section>
+	</main></body></html>
 }
 
 templ allegroPage(status integrationStatus) {

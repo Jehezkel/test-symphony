@@ -25,12 +25,84 @@ func newApp(products *productStore, services ...*allegroService) http.Handler {
 	mux.HandleFunc("GET /products/{id}/edit", a.editProduct)
 	mux.HandleFunc("PUT /products/{id}", a.updateProduct)
 	mux.HandleFunc("DELETE /products/{id}", a.deleteProduct)
+	mux.HandleFunc("GET /costs", a.costs)
+	mux.HandleFunc("POST /costs/{id}", a.updateCost)
+	mux.HandleFunc("GET /costs/template.csv", a.costTemplate)
+	mux.HandleFunc("POST /costs/import", a.importCosts)
 	mux.HandleFunc("GET /integration/allegro", a.allegroStatus)
 	mux.HandleFunc("GET /oauth/allegro/start", a.allegroStart)
 	mux.HandleFunc("GET /oauth/allegro/callback", a.allegroCallback)
 	mux.HandleFunc("POST /integration/allegro/disconnect", a.allegroDisconnect)
 	mux.HandleFunc("POST /integration/allegro/sync", a.allegroSync)
 	return mux
+}
+
+func (a *app) costs(w http.ResponseWriter, r *http.Request) {
+	items, err := a.products.listCosts(r.Context())
+	if err != nil {
+		http.Error(w, "load product costs", http.StatusInternalServerError)
+		return
+	}
+	if err := costsPage(items, nil).Render(r.Context(), w); err != nil {
+		http.Error(w, "render costs", http.StatusInternalServerError)
+	}
+}
+
+func (a *app) updateCost(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid product id", http.StatusBadRequest)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	cost, err := parseMinorUnits(r.FormValue("unit_purchase_cost"))
+	if err != nil || cost < 0 || strings.ToUpper(strings.TrimSpace(r.FormValue("currency"))) != "PLN" {
+		http.Error(w, "cost must be a non-negative PLN amount with at most two decimal places", http.StatusUnprocessableEntity)
+		return
+	}
+	if err := a.products.setCost(r.Context(), id, cost, "PLN", "manual"); errors.Is(err, errProductNotFound) {
+		http.NotFound(w, r)
+		return
+	} else if err != nil {
+		http.Error(w, "save product cost", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/costs", http.StatusSeeOther)
+}
+
+func (a *app) costTemplate(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="koszty-produktow.csv"`)
+	_, _ = w.Write([]byte("sku,ean,offer_id,unit_purchase_cost,currency\nSKU-001,,,12.34,PLN\n"))
+}
+
+func (a *app) importCosts(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		http.Error(w, "invalid CSV upload", http.StatusBadRequest)
+		return
+	}
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "CSV file is required", http.StatusUnprocessableEntity)
+		return
+	}
+	defer file.Close()
+	report, err := a.products.importCosts(r.Context(), file)
+	if err != nil {
+		http.Error(w, "import product costs", http.StatusBadRequest)
+		return
+	}
+	items, err := a.products.listCosts(r.Context())
+	if err != nil {
+		http.Error(w, "load product costs", http.StatusInternalServerError)
+		return
+	}
+	if err := costsPage(items, &report).Render(r.Context(), w); err != nil {
+		http.Error(w, "render import report", http.StatusInternalServerError)
+	}
 }
 
 func (a *app) allegroSync(w http.ResponseWriter, r *http.Request) {
