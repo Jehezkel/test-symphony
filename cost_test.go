@@ -10,15 +10,15 @@ func TestCostImportAddsUpdatesAndSkips(t *testing.T) {
 	store := testCostStore(t)
 	productID := insertCostProduct(t, store, "SKU-1", "5901")
 
-	report, err := store.importCosts(context.Background(), strings.NewReader("sku,unit_purchase_cost,currency\nSKU-1,12.34,PLN\n"))
+	report, err := store.importCosts(context.Background(), 1, strings.NewReader("sku,unit_purchase_cost,currency\nSKU-1,12.34,PLN\n"))
 	if err != nil || report.Added != 1 || len(report.Errors) != 0 {
 		t.Fatalf("first report = %+v, err = %v", report, err)
 	}
-	report, err = store.importCosts(context.Background(), strings.NewReader("ean,unit_purchase_cost,currency\n5901,12.34,PLN\n"))
+	report, err = store.importCosts(context.Background(), 1, strings.NewReader("ean,unit_purchase_cost,currency\n5901,12.34,PLN\n"))
 	if err != nil || report.Skipped != 1 || len(report.Errors) != 0 {
 		t.Fatalf("unchanged report = %+v, err = %v", report, err)
 	}
-	report, err = store.importCosts(context.Background(), strings.NewReader("sku,unit_purchase_cost,currency\nSKU-1,15,PLN\n"))
+	report, err = store.importCosts(context.Background(), 1, strings.NewReader("sku,unit_purchase_cost,currency\nSKU-1,15,PLN\n"))
 	if err != nil || report.Updated != 1 || len(report.Errors) != 0 {
 		t.Fatalf("update report = %+v, err = %v", report, err)
 	}
@@ -34,7 +34,7 @@ func TestCostImportValidationIsAtomicAndReportsRows(t *testing.T) {
 	insertCostProduct(t, store, "SKU-2", "5902")
 	input := "sku,unit_purchase_cost,currency\nSKU-1,10.00,PLN\nUNKNOWN,2.00,PLN\nSKU-1,3.00,PLN\nSKU-2,4.123,PLN\n"
 
-	report, err := store.importCosts(context.Background(), strings.NewReader(input))
+	report, err := store.importCosts(context.Background(), 1, strings.NewReader(input))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestCostImportRejectsCurrencyDuplicateHeaderAndMalformedCSV(t *testing.T) {
 		"malformed":        "sku,unit_purchase_cost,currency\nSKU-1,\"1.00,PLN\n",
 	} {
 		t.Run(name, func(t *testing.T) {
-			report, err := store.importCosts(context.Background(), strings.NewReader(input))
+			report, err := store.importCosts(context.Background(), 1, strings.NewReader(input))
 			if err != nil || len(report.Errors) == 0 || report.Errors[0].Row < 1 {
 				t.Fatalf("report = %+v, err = %v", report, err)
 			}

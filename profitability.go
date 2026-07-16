@@ -198,11 +198,12 @@ func newProfitabilityEngine(db *sql.DB) *profitabilityEngine { return &profitabi
 // CalculateOrder always reads the latest effective costs, fees and adjustments.
 // It is intentionally side-effect free, so repeated and concurrent reads cannot
 // produce stale results after a cost or a late Allegro fee is updated.
-func (e *profitabilityEngine) CalculateOrder(ctx context.Context, orderID int64) (profitabilityResult, error) {
+func (e *profitabilityEngine) CalculateOrder(ctx context.Context, userID, orderID int64) (profitabilityResult, error) {
 	var in profitabilityInput
 	var shipping sql.NullInt64
 	var fulfillment sql.NullString
-	if err := e.db.QueryRowContext(ctx, `SELECT currency,status,fulfillment_status,buyer_delivery_minor,seller_shipping_cost_minor FROM allegro_orders WHERE id=?`, orderID).Scan(&in.Currency, &in.Status, &fulfillment, &in.BuyerDeliveryMinor, &shipping); err != nil {
+	if err := e.db.QueryRowContext(ctx, `SELECT o.currency,o.status,o.fulfillment_status,o.buyer_delivery_minor,o.seller_shipping_cost_minor
+		FROM allegro_orders o JOIN allegro_integrations i ON i.id=o.integration_id WHERE o.id=? AND i.user_id=?`, orderID, userID).Scan(&in.Currency, &in.Status, &fulfillment, &in.BuyerDeliveryMinor, &shipping); err != nil {
 		return profitabilityResult{}, fmt.Errorf("load profitability order: %w", err)
 	}
 	if shipping.Valid {
@@ -277,8 +278,8 @@ func (e *profitabilityEngine) CalculateOrder(ctx context.Context, orderID int64)
 	return calculateProfitability(in)
 }
 
-func (e *profitabilityEngine) CalculatePeriod(ctx context.Context, integrationID int64, from, to string) ([]profitabilityResult, error) {
-	rows, err := e.db.QueryContext(ctx, `SELECT id FROM allegro_orders WHERE integration_id=? AND bought_at>=? AND bought_at<? ORDER BY bought_at,id`, integrationID, from, to)
+func (e *profitabilityEngine) CalculatePeriod(ctx context.Context, userID int64, from, to string) ([]profitabilityResult, error) {
+	rows, err := e.db.QueryContext(ctx, `SELECT o.id FROM allegro_orders o JOIN allegro_integrations i ON i.id=o.integration_id WHERE i.user_id=? AND o.bought_at>=? AND o.bought_at<? ORDER BY o.bought_at,o.id`, userID, from, to)
 	if err != nil {
 		return nil, fmt.Errorf("load profitability period: %w", err)
 	}
@@ -296,7 +297,7 @@ func (e *profitabilityEngine) CalculatePeriod(ctx context.Context, integrationID
 	}
 	results := make([]profitabilityResult, 0, len(ids))
 	for _, id := range ids {
-		result, err := e.CalculateOrder(ctx, id)
+		result, err := e.CalculateOrder(ctx, userID, id)
 		if err != nil {
 			return nil, err
 		}

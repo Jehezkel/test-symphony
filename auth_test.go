@@ -5,10 +5,139 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestUserDataIsolationForReadAndModification(t *testing.T) {
+	db, err := openDatabase(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	auth := newAuthService(db, time.Hour, false)
+	first, err := auth.register(t.Context(), "first@example.com", "StrongPassword1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := auth.register(t.Context(), "second@example.com", "StrongPassword2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := newProductStore(db)
+	firstProduct, err := store.create(t.Context(), first.ID, "First private product", 1000, "FIRST-EAN")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.create(t.Context(), second.ID, "Second private product", 2000, "SECOND-EAN"); err != nil {
+		t.Fatal(err)
+	}
+	handler := newAuthenticatedApp(store, nil, auth)
+	firstCookie := sessionCookie(t, auth, first.ID)
+	secondCookie := sessionCookie(t, auth, second.ID)
+
+	firstIndex := authenticatedRequest(handler, firstCookie, http.MethodGet, "/", nil)
+	if firstIndex.Code != http.StatusOK || !strings.Contains(firstIndex.Body.String(), "First private product") || strings.Contains(firstIndex.Body.String(), "Second private product") {
+		t.Fatalf("first index leaked data: %d %q", firstIndex.Code, firstIndex.Body.String())
+	}
+	secondIndex := authenticatedRequest(handler, secondCookie, http.MethodGet, "/", nil)
+	if secondIndex.Code != http.StatusOK || !strings.Contains(secondIndex.Body.String(), "Second private product") || strings.Contains(secondIndex.Body.String(), "First private product") {
+		t.Fatalf("second index leaked data: %d %q", secondIndex.Code, secondIndex.Body.String())
+	}
+
+	foreignPath := "/products/" + strconv.FormatInt(firstProduct.ID, 10)
+	for _, attempt := range []struct {
+		method string
+		path   string
+		form   url.Values
+	}{
+		{http.MethodGet, foreignPath + "/edit", nil},
+		{http.MethodPut, foreignPath, url.Values{"name": {"Stolen"}, "price": {"1.00"}, "ean": {"STOLEN"}}},
+		{http.MethodDelete, foreignPath, nil},
+		{http.MethodPost, "/costs/" + strconv.FormatInt(firstProduct.ID, 10), url.Values{"unit_purchase_cost": {"1.00"}, "currency": {"PLN"}}},
+	} {
+		response := authenticatedRequest(handler, secondCookie, attempt.method, attempt.path, attempt.form)
+		if response.Code != http.StatusNotFound {
+			t.Errorf("foreign %s %s = %d, want 404", attempt.method, attempt.path, response.Code)
+		}
+	}
+	if item, err := store.get(t.Context(), first.ID, firstProduct.ID); err != nil || item.Name != "First private product" {
+		t.Fatalf("foreign mutation changed owner data: %#v, %v", item, err)
+	}
+}
+
+func TestDashboardExportOnlyContainsAuthenticatedUsersOrders(t *testing.T) {
+	db, err := openDatabase(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	auth := newAuthService(db, time.Hour, false)
+	first, _ := auth.register(t.Context(), "csv-first@example.com", "StrongPassword1")
+	second, _ := auth.register(t.Context(), "csv-second@example.com", "StrongPassword2")
+	for _, seed := range []struct {
+		userID int64
+		prefix string
+	}{
+		{first.ID, "FIRST-PRIVATE"},
+		{second.ID, "SECOND-PRIVATE"},
+	} {
+		result, err := db.Exec(`INSERT INTO allegro_integrations(user_id,allegro_account_id) VALUES(?,?)`, seed.userID, seed.prefix+"-ACCOUNT")
+		if err != nil {
+			t.Fatal(err)
+		}
+		integrationID, _ := result.LastInsertId()
+		result, err = db.Exec(`INSERT INTO products(user_id,sku,name) VALUES(?,?,?)`, seed.userID, seed.prefix+"-SKU", seed.prefix+" product")
+		if err != nil {
+			t.Fatal(err)
+		}
+		productID, _ := result.LastInsertId()
+		result, err = db.Exec(`INSERT INTO allegro_offers(integration_id,product_id,allegro_offer_id,name,status) VALUES(?,?,?,?,?)`, integrationID, productID, seed.prefix+"-OFFER", seed.prefix+" offer", "ACTIVE")
+		if err != nil {
+			t.Fatal(err)
+		}
+		offerID, _ := result.LastInsertId()
+		result, err = db.Exec(`INSERT INTO allegro_orders(integration_id,allegro_order_id,status,currency,buyer_delivery_minor,seller_shipping_cost_minor,bought_at,source_updated_at) VALUES(?,?,?,?,?,?,?,?)`, integrationID, seed.prefix+"-ORDER", "READY_FOR_PROCESSING", "PLN", 0, 0, "2026-07-10T00:00:00Z", "2026-07-10T00:00:00Z")
+		if err != nil {
+			t.Fatal(err)
+		}
+		orderID, _ := result.LastInsertId()
+		if _, err := db.Exec(`INSERT INTO order_items(order_id,offer_id,allegro_line_item_id,allegro_offer_id,name,quantity,unit_price_minor,currency,bought_at) VALUES(?,?,?,?,?,?,?,?,?)`, orderID, offerID, seed.prefix+"-LINE", seed.prefix+"-OFFER", seed.prefix+" item", 1, 1000, "PLN", "2026-07-10T00:00:00Z"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	handler := newAuthenticatedApp(newProductStore(db), nil, auth)
+	response := authenticatedRequest(handler, sessionCookie(t, auth, second.ID), http.MethodGet, "/dashboard/export.csv?from=2026-07-01&to=2026-07-31", nil)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "SECOND-PRIVATE-ORDER") || strings.Contains(response.Body.String(), "FIRST-PRIVATE-ORDER") {
+		t.Fatalf("CSV export leaked data: %d %q", response.Code, response.Body.String())
+	}
+}
+
+func sessionCookie(t *testing.T, auth *authService, userID int64) *http.Cookie {
+	t.Helper()
+	token, expires, err := auth.createSession(t.Context(), userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return auth.cookie(token, expires)
+}
+
+func authenticatedRequest(handler http.Handler, cookie *http.Cookie, method, target string, form url.Values) *httptest.ResponseRecorder {
+	body := strings.NewReader("")
+	if form != nil {
+		body = strings.NewReader(form.Encode())
+	}
+	req := httptest.NewRequest(method, target, body)
+	if form != nil {
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	}
+	req.AddCookie(cookie)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, req)
+	return response
+}
 
 func TestSessionCreateReadExpireAndRevoke(t *testing.T) {
 	db, err := openDatabase(":memory:")

@@ -389,10 +389,33 @@ func (s *allegroService) startScheduler(ctx context.Context, interval time.Durat
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				runCtx, cancel := context.WithTimeout(ctx, interval)
-				_ = s.synchronize(runCtx, 1, "scheduled")
-				cancel()
+				userIDs, err := s.scheduledUserIDs(ctx)
+				if err != nil {
+					continue
+				}
+				for _, userID := range userIDs {
+					runCtx, cancel := context.WithTimeout(ctx, interval)
+					_ = s.synchronize(runCtx, userID, "scheduled")
+					cancel()
+				}
 			}
 		}
 	}()
+}
+
+func (s *allegroService) scheduledUserIDs(ctx context.Context) ([]int64, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT user_id FROM allegro_integrations WHERE access_token_ciphertext IS NOT NULL ORDER BY user_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var userIDs []int64
+	for rows.Next() {
+		var userID int64
+		if err := rows.Scan(&userID); err != nil {
+			return nil, err
+		}
+		userIDs = append(userIDs, userID)
+	}
+	return userIDs, rows.Err()
 }

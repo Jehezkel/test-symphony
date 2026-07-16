@@ -8,6 +8,23 @@ import (
 	"testing"
 )
 
+func TestScheduledSyncDiscoversEveryConnectedUser(t *testing.T) {
+	s, _, _ := testAllegro(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	if _, err := s.db.Exec(`INSERT INTO users(id,email,display_name) VALUES(2,'second@example.com','Second')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`INSERT INTO allegro_integrations(user_id,allegro_account_id,access_token_ciphertext) VALUES(1,'first',X'01'),(2,'second',X'02')`); err != nil {
+		t.Fatal(err)
+	}
+	userIDs, err := s.scheduledUserIDs(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(userIDs) != 2 || userIDs[0] != 1 || userIDs[1] != 2 {
+		t.Fatalf("scheduled users = %#v", userIDs)
+	}
+}
+
 func TestAllegroSynchronizationIsPaginatedAndIdempotent(t *testing.T) {
 	offerCalls := 0
 	s, _, _ := testAllegro(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -103,7 +120,7 @@ func TestOfferWithoutSKUStillHasProductForCostAndOrderItem(t *testing.T) {
 	if err := s.db.QueryRow(`SELECT product_id FROM allegro_offers WHERE allegro_offer_id='offer-no-sku'`).Scan(&productID); err != nil || productID == 0 {
 		t.Fatalf("product id = %d, err = %v", productID, err)
 	}
-	report, err := newProductStore(s.db).importCosts(context.Background(), strings.NewReader("offer_id,unit_purchase_cost,currency\noffer-no-sku,4.20,PLN\n"))
+	report, err := newProductStore(s.db).importCosts(context.Background(), 1, strings.NewReader("offer_id,unit_purchase_cost,currency\noffer-no-sku,4.20,PLN\n"))
 	if err != nil || report.Added != 1 || len(report.Errors) != 0 {
 		t.Fatalf("report = %+v, err = %v", report, err)
 	}

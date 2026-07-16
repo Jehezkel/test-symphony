@@ -59,7 +59,7 @@ func (a *app) dashboardExport(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		cursorBoughtAt, cursorID = boughtAt, orderID
-		result, err := a.profits.CalculateOrder(r.Context(), orderID)
+		result, err := a.profits.CalculateOrder(r.Context(), requestUserID(r), orderID)
 		if err != nil {
 			return
 		}
@@ -73,7 +73,9 @@ func (a *app) dashboardExport(w http.ResponseWriter, r *http.Request) {
 				FROM order_items oi
 				LEFT JOIN allegro_offers ao ON ao.id=oi.offer_id
 				LEFT JOIN products p ON p.id=ao.product_id
-				WHERE oi.id=?`, line.ID).Scan(&quantity, &offerID, &sku, &ean)
+				JOIN allegro_orders ord ON ord.id=oi.order_id
+				JOIN allegro_integrations i ON i.id=ord.integration_id
+				WHERE oi.id=? AND i.user_id=?`, line.ID, requestUserID(r)).Scan(&quantity, &offerID, &sku, &ean)
 			if err != nil {
 				return
 			}
@@ -97,7 +99,7 @@ func (a *app) dashboardExport(w http.ResponseWriter, r *http.Request) {
 	writer.Flush()
 }
 
-func currentUserID(_ *http.Request) int64 { return 1 }
+func currentUserID(r *http.Request) int64 { return requestUserID(r) }
 
 func formatCSVAmount(minor int64) string {
 	return strings.Replace(formatMinorUnits(minor), ".", ",", 1)

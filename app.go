@@ -78,7 +78,21 @@ func newApp(products *productStore, services ...*allegroService) http.Handler {
 	mux.HandleFunc("GET /dashboard/results", a.dashboardResults)
 	mux.HandleFunc("GET /dashboard/export.csv", a.dashboardExport)
 	mux.HandleFunc("GET /dashboard/offers/{id}", a.dashboardOffer)
-	return mux
+	return withUser(mux, user{ID: 1, Email: "local@localhost", DisplayName: "Local user"})
+}
+
+func withUser(next http.Handler, u user) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userContextKey{}, u)))
+	})
+}
+
+func requestUserID(r *http.Request) int64 {
+	u, ok := currentUser(r.Context())
+	if !ok {
+		return 0
+	}
+	return u.ID
 }
 
 func newAuthenticatedApp(products *productStore, allegro *allegroService, auth *authService) http.Handler {
@@ -266,7 +280,7 @@ func (a *app) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) costs(w http.ResponseWriter, r *http.Request) {
-	items, err := a.products.listCosts(r.Context())
+	items, err := a.products.listCosts(r.Context(), requestUserID(r))
 	if err != nil {
 		http.Error(w, "load product costs", http.StatusInternalServerError)
 		return
@@ -291,7 +305,7 @@ func (a *app) updateCost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "cost must be a non-negative PLN amount with at most two decimal places", http.StatusUnprocessableEntity)
 		return
 	}
-	if err := a.products.setCost(r.Context(), id, cost, "PLN", "manual"); errors.Is(err, errProductNotFound) {
+	if err := a.products.setCost(r.Context(), requestUserID(r), id, cost, "PLN", "manual"); errors.Is(err, errProductNotFound) {
 		http.NotFound(w, r)
 		return
 	} else if err != nil {
@@ -318,12 +332,12 @@ func (a *app) importCosts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer file.Close()
-	report, err := a.products.importCosts(r.Context(), file)
+	report, err := a.products.importCosts(r.Context(), requestUserID(r), file)
 	if err != nil {
 		http.Error(w, "import product costs", http.StatusBadRequest)
 		return
 	}
-	items, err := a.products.listCosts(r.Context())
+	items, err := a.products.listCosts(r.Context(), requestUserID(r))
 	if err != nil {
 		http.Error(w, "load product costs", http.StatusInternalServerError)
 		return
@@ -337,7 +351,7 @@ func (a *app) allegroSync(w http.ResponseWriter, r *http.Request) {
 	message := "Synchronizacja zakończona pomyślnie."
 	if a.allegro == nil {
 		message = "Integracja Allegro nie jest skonfigurowana."
-	} else if err := a.allegro.synchronize(r.Context(), 1, "manual"); err != nil {
+	} else if err := a.allegro.synchronize(r.Context(), requestUserID(r), "manual"); err != nil {
 		message = "Synchronizacja nie powiodła się. Można ją bezpiecznie ponowić."
 	}
 	http.Redirect(w, r, "/integration/allegro?message="+url.QueryEscape(message), http.StatusSeeOther)
@@ -346,7 +360,7 @@ func (a *app) allegroSync(w http.ResponseWriter, r *http.Request) {
 func (a *app) allegroStatus(w http.ResponseWriter, r *http.Request) {
 	status := integrationStatus{Message: r.URL.Query().Get("message")}
 	if a.allegro != nil {
-		status = a.allegro.status(r.Context(), 1, status.Message)
+		status = a.allegro.status(r.Context(), requestUserID(r), status.Message)
 	}
 	if err := allegroPage(status).Render(r.Context(), w); err != nil {
 		http.Error(w, "render integration", http.StatusInternalServerError)
@@ -358,7 +372,7 @@ func (a *app) allegroStart(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/integration/allegro?message="+url.QueryEscape("Integracja Allegro nie jest skonfigurowana."), http.StatusSeeOther)
 		return
 	}
-	location, err := a.allegro.begin(r.Context(), 1)
+	location, err := a.allegro.begin(r.Context(), requestUserID(r))
 	if err != nil {
 		http.Redirect(w, r, "/integration/allegro?message="+url.QueryEscape("Nie udało się rozpocząć połączenia z Allegro."), http.StatusSeeOther)
 		return
@@ -370,7 +384,7 @@ func (a *app) allegroCallback(w http.ResponseWriter, r *http.Request) {
 	message := "Konto Allegro zostało połączone."
 	if a.allegro == nil {
 		message = "Integracja Allegro nie jest skonfigurowana."
-	} else if err := a.allegro.consumeState(r.Context(), r.URL.Query().Get("state"), 1); err != nil {
+	} else if err := a.allegro.consumeState(r.Context(), r.URL.Query().Get("state"), requestUserID(r)); err != nil {
 		message = "Sesja łączenia wygasła lub jest nieprawidłowa. Spróbuj ponownie."
 	} else if r.URL.Query().Get("error") != "" {
 		message = "Połączenie zostało odrzucone lub anulowane w Allegro."
@@ -378,7 +392,7 @@ func (a *app) allegroCallback(w http.ResponseWriter, r *http.Request) {
 		message = "Allegro nie zaakceptowało autoryzacji. Spróbuj ponownie później."
 	} else if accountID, err := a.allegro.accountID(r.Context(), token.AccessToken); err != nil {
 		message = "Nie udało się pobrać danych konta z Allegro."
-	} else if err := a.allegro.save(r.Context(), 1, accountID, token); err != nil {
+	} else if err := a.allegro.save(r.Context(), requestUserID(r), accountID, token); err != nil {
 		message = "Nie udało się bezpiecznie zapisać połączenia."
 	}
 	http.Redirect(w, r, "/integration/allegro?message="+url.QueryEscape(message), http.StatusSeeOther)
@@ -387,7 +401,7 @@ func (a *app) allegroCallback(w http.ResponseWriter, r *http.Request) {
 func (a *app) allegroDisconnect(w http.ResponseWriter, r *http.Request) {
 	message := "Konto Allegro zostało rozłączone."
 	if a.allegro != nil {
-		if err := a.allegro.disconnect(r.Context(), 1); err != nil {
+		if err := a.allegro.disconnect(r.Context(), requestUserID(r)); err != nil {
 			message = "Nie udało się rozłączyć konta Allegro."
 		}
 	}
@@ -405,7 +419,7 @@ func (a *app) index(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	products, err := a.products.list()
+	products, err := a.products.list(r.Context(), requestUserID(r))
 	if err != nil {
 		http.Error(w, "load products", http.StatusInternalServerError)
 		return
@@ -420,7 +434,7 @@ func (a *app) createProduct(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	item, err := a.products.create(name, price, ean)
+	item, err := a.products.create(r.Context(), requestUserID(r), name, price, ean)
 	if err != nil {
 		http.Error(w, "create product", http.StatusInternalServerError)
 		return
@@ -450,7 +464,7 @@ func (a *app) updateProduct(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	item, err := a.products.update(id, name, price, ean)
+	item, err := a.products.update(r.Context(), requestUserID(r), id, name, price, ean)
 	if errors.Is(err, errProductNotFound) {
 		http.NotFound(w, r)
 		return
@@ -470,7 +484,7 @@ func (a *app) deleteProduct(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid product id", http.StatusBadRequest)
 		return
 	}
-	if err := a.products.delete(id); errors.Is(err, errProductNotFound) {
+	if err := a.products.delete(r.Context(), requestUserID(r), id); errors.Is(err, errProductNotFound) {
 		http.NotFound(w, r)
 		return
 	} else if err != nil {
@@ -486,7 +500,7 @@ func (a *app) findProduct(w http.ResponseWriter, r *http.Request) (product, bool
 		http.Error(w, "invalid product id", http.StatusBadRequest)
 		return product{}, false
 	}
-	item, err := a.products.get(id)
+	item, err := a.products.get(r.Context(), requestUserID(r), id)
 	if errors.Is(err, errProductNotFound) {
 		http.NotFound(w, r)
 		return product{}, false

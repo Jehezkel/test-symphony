@@ -100,7 +100,7 @@ func TestEngineRecalculatesAfterProductCostAndFeeChange(t *testing.T) {
 	mustExec(`INSERT INTO product_costs(product_id,unit_cost_minor,currency,valid_from,source) VALUES(1,4000,'PLN','2026-01-01T00:00:00Z','manual')`)
 	mustExec(`INSERT INTO allegro_fees(integration_id,order_id,allegro_fee_id,type_id,type_name,value_minor,currency,occurred_at) VALUES(1,1,'fee','commission','Commission',-1000,'PLN','2026-01-10T00:00:00Z')`)
 	engine := newProfitabilityEngine(db)
-	first, err := engine.CalculateOrder(context.Background(), 1)
+	first, err := engine.CalculateOrder(context.Background(), 1, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestEngineRecalculatesAfterProductCostAndFeeChange(t *testing.T) {
 	}
 	mustExec(`UPDATE product_costs SET unit_cost_minor=4500 WHERE product_id=1`)
 	mustExec(`UPDATE allegro_fees SET value_minor=-1200 WHERE allegro_fee_id='fee'`)
-	second, err := engine.CalculateOrder(context.Background(), 1)
+	second, err := engine.CalculateOrder(context.Background(), 1, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
