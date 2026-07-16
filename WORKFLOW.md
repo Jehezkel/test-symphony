@@ -1,68 +1,64 @@
 ---
 
 tracker:
-kind: linear
-project_slug: "test-symphony-409594645a94"
-required_labels:
-- symphony
-active_states:
-- Todo
-- In Progress
-terminal_states:
-- Done
-- Closed
-- Cancelled
-- Canceled
-- Duplicate
+  kind: linear
+  project_slug: "test-symphony-409594645a94"
+  required_labels:
+    - symphony
+  active_states:
+    - Todo
+    - In Progress
+  terminal_states:
+    - Done
+    - Closed
+    - Cancelled
+    - Canceled
+    - Duplicate
 
 polling:
-interval_ms: 30000
+  interval_ms: 30000
 
 workspace:
-root: /home/symphony/workspaces
+  root: /home/symphony/workspaces
 
 hooks:
-after_create: |
-set -eu
+  after_create: |
+    set -eu
 
-```
-test -n "${SOURCE_REPO_URL:-}" || {
-  echo "SOURCE_REPO_URL is not configured"
-  exit 1
-}
+    test -n "${SOURCE_REPO_URL:-}" || {
+      echo "SOURCE_REPO_URL is not configured"
+      exit 1
+    }
 
-git clone "$SOURCE_REPO_URL" .
+    git clone "$SOURCE_REPO_URL" .
+    git fetch origin --prune
 
-git fetch origin --prune
+    if git show-ref --verify --quiet refs/remotes/origin/develop; then
+      git checkout -B develop origin/develop
+    elif git show-ref --verify --quiet refs/remotes/origin/main; then
+      git checkout -B develop origin/main
+    else
+      echo "Neither origin/develop nor origin/main exists"
+      exit 1
+    fi
 
-if git show-ref --verify --quiet refs/remotes/origin/develop; then
-  git checkout -B develop origin/develop
-elif git show-ref --verify --quiet refs/remotes/origin/main; then
-  git checkout -B develop origin/main
-else
-  echo "Neither origin/develop nor origin/main exists"
-  exit 1
-fi
-
-if [ -f go.mod ]; then
-  go mod download
-fi
-```
-
-timeout_ms: 300000
+    if [ -f go.mod ]; then
+      go mod download
+    fi
+  timeout_ms: 300000
 
 agent:
-max_concurrent_agents: 1
-max_turns: 30
-max_retry_backoff_ms: 300000
+  max_concurrent_agents: 1
+  max_turns: 30
+  max_retry_backoff_ms: 300000
 
 codex:
-command: codex --config shell_environment_policy.inherit=all app-server
-approval_policy: never
-thread_sandbox: workspace-write
-turn_sandbox_policy:
-type: workspaceWrite
-networkAccess: true
+  command: codex --config shell_environment_policy.inherit=all app-server
+  approval_policy: never
+  thread_sandbox: workspace-write
+  turn_sandbox_policy:
+    type: workspaceWrite
+    networkAccess: true
 
 ---
 
@@ -587,4 +583,3 @@ The final response must contain only:
 
 Do not ask the user for follow-up actions unless work is blocked by a missing
 external permission or secret.
-
