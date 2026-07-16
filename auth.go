@@ -4,11 +4,14 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/mail"
+	"regexp"
 	"strings"
 	"time"
 
@@ -18,6 +21,9 @@ import (
 const sessionCookieName = "goth_session"
 
 var errInvalidCredentials = errors.New("invalid credentials")
+var errEmailUnavailable = errors.New("email unavailable")
+
+var passwordDigit = regexp.MustCompile(`[0-9]`)
 
 type user struct {
 	ID          int64
@@ -26,6 +32,7 @@ type user struct {
 }
 
 type userContextKey struct{}
+type csrfContextKey struct{}
 
 type authService struct {
 	db     *sql.DB
@@ -93,6 +100,42 @@ func (s *authService) authenticate(ctx context.Context, email, password string) 
 	return u, nil
 }
 
+func validateRegistration(email, password, confirmation string) map[string]string {
+	errorsByField := make(map[string]string)
+	email = strings.TrimSpace(email)
+	address, err := mail.ParseAddress(email)
+	if err != nil || address.Address != email || len(email) > 254 {
+		errorsByField["email"] = "Podaj prawidłowy adres e-mail."
+	}
+	if len(password) < 12 || len(password) > 72 || strings.ToLower(password) == password || strings.ToUpper(password) == password || !passwordDigit.MatchString(password) {
+		errorsByField["password"] = "Hasło musi mieć 12–72 znaki oraz zawierać małą i wielką literę i cyfrę."
+	}
+	if confirmation != password {
+		errorsByField["confirmation"] = "Hasła nie są identyczne."
+	}
+	return errorsByField
+}
+
+func (s *authService) register(ctx context.Context, email, password string) (user, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return user{}, fmt.Errorf("hash password: %w", err)
+	}
+	result, err := s.db.ExecContext(ctx, `INSERT INTO users(email,display_name,password_hash) VALUES(?,?,?)`, email, email, string(hash))
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "unique") {
+			return user{}, errEmailUnavailable
+		}
+		return user{}, fmt.Errorf("store user: %w", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return user{}, fmt.Errorf("read user id: %w", err)
+	}
+	return user{ID: id, Email: email, DisplayName: email}, nil
+}
+
 func (s *authService) createSession(ctx context.Context, userID int64) (string, time.Time, error) {
 	raw := make([]byte, 32)
 	if _, err := s.random(raw); err != nil {
@@ -151,7 +194,26 @@ func (s *authService) cookie(token string, expires time.Time) *http.Cookie {
 	return &http.Cookie{Name: sessionCookieName, Value: token, Path: "/", HttpOnly: true, Secure: s.secure, SameSite: http.SameSiteLaxMode, Expires: expires, MaxAge: int(expires.Sub(s.now()).Seconds())}
 }
 
+func csrfToken(sessionToken string) string {
+	hash := sha256.Sum256([]byte("logout-csrf:" + sessionToken))
+	return base64.RawURLEncoding.EncodeToString(hash[:])
+}
+
+func validCSRF(sessionToken, submitted string) bool {
+	want, err := base64.RawURLEncoding.DecodeString(csrfToken(sessionToken))
+	if err != nil {
+		return false
+	}
+	got, err := base64.RawURLEncoding.DecodeString(submitted)
+	return err == nil && len(got) == len(want) && subtle.ConstantTimeCompare(got, want) == 1
+}
+
 func currentUser(ctx context.Context) (user, bool) {
 	u, ok := ctx.Value(userContextKey{}).(user)
 	return u, ok
+}
+
+func currentCSRF(ctx context.Context) string {
+	token, _ := ctx.Value(csrfContextKey{}).(string)
+	return token
 }

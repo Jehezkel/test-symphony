@@ -17,6 +17,42 @@ type app struct {
 	auth     *authService
 }
 
+type authFormData struct {
+	Mode         string
+	Email        string
+	Next         string
+	GeneralError string
+	Errors       map[string]string
+}
+
+func authTitle(mode string) string {
+	if mode == "register" {
+		return "Rejestracja"
+	}
+	return "Logowanie"
+}
+
+func authButton(mode string) string {
+	if mode == "register" {
+		return "Utwórz konto"
+	}
+	return "Zaloguj się"
+}
+
+func passwordAutocomplete(mode string) string {
+	if mode == "register" {
+		return "new-password"
+	}
+	return "current-password"
+}
+
+func passwordMinLength(mode string) string {
+	if mode == "register" {
+		return "12"
+	}
+	return "1"
+}
+
 func newApp(products *productStore, services ...*allegroService) http.Handler {
 	a := &app{products: products, profits: newProfitabilityEngine(products.db)}
 	if len(services) > 0 {
@@ -51,9 +87,12 @@ func newAuthenticatedApp(products *productStore, allegro *allegroService, auth *
 	public.HandleFunc("GET /health", a.health)
 	public.HandleFunc("GET /login", a.loginPage)
 	public.HandleFunc("POST /login", a.login)
+	public.HandleFunc("GET /register", a.registerPage)
+	public.HandleFunc("POST /register", a.register)
 
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /", a.index)
+	protected.HandleFunc("GET /onboarding", a.onboarding)
 	protected.HandleFunc("POST /logout", a.logout)
 	protected.HandleFunc("POST /products", a.createProduct)
 	protected.HandleFunc("GET /products/{id}/edit", a.editProduct)
@@ -81,32 +120,55 @@ func (a *app) requireUser(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cookie, err := r.Cookie(sessionCookieName)
 		if err != nil {
-			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			http.Redirect(w, r, loginURL(r), http.StatusSeeOther)
 			return
 		}
 		u, err := a.auth.userForToken(r.Context(), cookie.Value)
 		if err != nil {
 			http.SetCookie(w, a.auth.cookie("", time.Unix(1, 0)))
-			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			http.Redirect(w, r, loginURL(r), http.StatusSeeOther)
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userContextKey{}, u)))
+		ctx := context.WithValue(r.Context(), userContextKey{}, u)
+		ctx = context.WithValue(ctx, csrfContextKey{}, csrfToken(cookie.Value))
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
-func (a *app) loginPage(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write([]byte(`<!doctype html><html lang="pl"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Logowanie</title><body><main><h1>Logowanie</h1><form method="post" action="/login"><label>E-mail <input type="email" name="email" autocomplete="username" required></label><label>Hasło <input type="password" name="password" autocomplete="current-password" required></label><button type="submit">Zaloguj</button></form></main></body></html>`))
+func loginURL(r *http.Request) string {
+	if r.Method != http.MethodGet || r.URL.RequestURI() == "/" {
+		return "/login"
+	}
+	return "/login?next=" + url.QueryEscape(r.URL.RequestURI())
+}
+
+func (a *app) authenticated(r *http.Request) bool {
+	cookie, err := r.Cookie(sessionCookieName)
+	if err != nil {
+		return false
+	}
+	_, err = a.auth.userForToken(r.Context(), cookie.Value)
+	return err == nil
+}
+
+func (a *app) loginPage(w http.ResponseWriter, r *http.Request) {
+	if a.authenticated(r) {
+		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+		return
+	}
+	a.renderAuth(w, r, authFormData{Mode: "login", Next: safeNext(r.URL.Query().Get("next"))}, http.StatusOK)
 }
 
 func (a *app) login(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "invalid form", http.StatusBadRequest)
+		a.renderAuth(w, r, authFormData{Mode: "login", GeneralError: "Nie udało się odczytać formularza."}, http.StatusBadRequest)
 		return
 	}
-	u, err := a.auth.authenticate(r.Context(), r.FormValue("email"), r.FormValue("password"))
+	data := authFormData{Mode: "login", Email: strings.TrimSpace(r.FormValue("email")), Next: safeNext(r.FormValue("next"))}
+	u, err := a.auth.authenticate(r.Context(), data.Email, r.FormValue("password"))
 	if err != nil {
-		http.Error(w, "invalid email or password", http.StatusUnauthorized)
+		data.GeneralError = "Nieprawidłowy adres e-mail lub hasło."
+		a.renderAuth(w, r, data, http.StatusUnprocessableEntity)
 		return
 	}
 	token, expires, err := a.auth.createSession(r.Context(), u.ID)
@@ -115,11 +177,85 @@ func (a *app) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.SetCookie(w, a.auth.cookie(token, expires))
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	destination := data.Next
+	if destination == "" {
+		destination = "/dashboard"
+	}
+	http.Redirect(w, r, destination, http.StatusSeeOther)
+}
+
+func (a *app) registerPage(w http.ResponseWriter, r *http.Request) {
+	if a.authenticated(r) {
+		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+		return
+	}
+	a.renderAuth(w, r, authFormData{Mode: "register"}, http.StatusOK)
+}
+
+func (a *app) register(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		a.renderAuth(w, r, authFormData{Mode: "register", GeneralError: "Nie udało się odczytać formularza."}, http.StatusBadRequest)
+		return
+	}
+	data := authFormData{Mode: "register", Email: strings.TrimSpace(r.FormValue("email"))}
+	data.Errors = validateRegistration(data.Email, r.FormValue("password"), r.FormValue("password_confirmation"))
+	if len(data.Errors) > 0 {
+		a.renderAuth(w, r, data, http.StatusUnprocessableEntity)
+		return
+	}
+	u, err := a.auth.register(r.Context(), data.Email, r.FormValue("password"))
+	if errors.Is(err, errEmailUnavailable) {
+		data.GeneralError = "Nie można utworzyć konta z podanymi danymi."
+		a.renderAuth(w, r, data, http.StatusUnprocessableEntity)
+		return
+	}
+	if err != nil {
+		http.Error(w, "create account", http.StatusInternalServerError)
+		return
+	}
+	token, expires, err := a.auth.createSession(r.Context(), u.ID)
+	if err != nil {
+		http.Error(w, "create session", http.StatusInternalServerError)
+		return
+	}
+	http.SetCookie(w, a.auth.cookie(token, expires))
+	http.Redirect(w, r, "/onboarding", http.StatusSeeOther)
+}
+
+func safeNext(raw string) string {
+	parsed, err := url.Parse(raw)
+	if err != nil || raw == "" || !strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "//") || parsed.IsAbs() || parsed.Host != "" || parsed.Path == "/login" || parsed.Path == "/register" {
+		return ""
+	}
+	return raw
+}
+
+func (a *app) renderAuth(w http.ResponseWriter, r *http.Request, data authFormData, status int) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	if err := authPage(data).Render(r.Context(), w); err != nil {
+		return
+	}
+}
+
+func (a *app) onboarding(w http.ResponseWriter, r *http.Request) {
+	cookie, _ := r.Cookie(sessionCookieName)
+	token := ""
+	if cookie != nil {
+		token = csrfToken(cookie.Value)
+	}
+	if err := onboardingPage(token).Render(r.Context(), w); err != nil {
+		http.Error(w, "render onboarding", http.StatusInternalServerError)
+	}
 }
 
 func (a *app) logout(w http.ResponseWriter, r *http.Request) {
-	if cookie, err := r.Cookie(sessionCookieName); err == nil {
+	cookie, err := r.Cookie(sessionCookieName)
+	if err != nil || !validCSRF(cookie.Value, r.FormValue("csrf_token")) {
+		http.Error(w, "invalid CSRF token", http.StatusForbidden)
+		return
+	}
+	if cookie != nil {
 		if err := a.auth.revoke(r.Context(), cookie.Value); err != nil {
 			http.Error(w, "revoke session", http.StatusInternalServerError)
 			return

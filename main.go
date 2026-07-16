@@ -32,8 +32,8 @@ func main() {
 	defer db.Close()
 	authEmail := os.Getenv("AUTH_EMAIL")
 	authPassword := os.Getenv("AUTH_PASSWORD")
-	if authEmail == "" || authPassword == "" {
-		log.Fatal("AUTH_EMAIL and AUTH_PASSWORD must be set")
+	if (authEmail == "") != (authPassword == "") {
+		log.Fatal("AUTH_EMAIL and AUTH_PASSWORD must be set together")
 	}
 	sessionTTL := 24 * time.Hour
 	if raw := os.Getenv("SESSION_TTL_HOURS"); raw != "" {
@@ -44,8 +44,10 @@ func main() {
 		sessionTTL = time.Duration(hours) * time.Hour
 	}
 	auth := newAuthService(db, sessionTTL, os.Getenv("APP_ENV") == "production")
-	if err := auth.ensureUser(context.Background(), authEmail, os.Getenv("AUTH_DISPLAY_NAME"), authPassword); err != nil {
-		log.Fatalf("initialize authentication: %v", err)
+	if authEmail != "" {
+		if err := auth.ensureUser(context.Background(), authEmail, os.Getenv("AUTH_DISPLAY_NAME"), authPassword); err != nil {
+			log.Fatalf("initialize authentication: %v", err)
+		}
 	}
 
 	allegroConfig, err := allegroConfigFromEnv()

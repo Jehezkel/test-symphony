@@ -2,6 +2,55 @@ package main
 
 import "strconv"
 
+templ logoutForm() {
+	<form method="post" action="/logout"><input type="hidden" name="csrf_token" value={ currentCSRF(ctx) }/><button class="btn btn-ghost btn-sm" type="submit">Wyloguj się</button></form>
+}
+
+templ authPage(data authFormData) {
+	<!doctype html>
+	<html lang="pl" data-theme="corporate">
+		<head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>{ authTitle(data.Mode) }</title><link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css"/><script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script><script src="https://unpkg.com/htmx.org@2.0.6"></script></head>
+		<body class="min-h-screen bg-base-200"><main class="mx-auto flex min-h-screen max-w-md items-center p-5"><section id="auth-card" class="card w-full bg-base-100 shadow-xl"><div class="card-body"><h1 class="card-title text-3xl">{ authTitle(data.Mode) }</h1>
+			if data.GeneralError != "" {
+				<div class="alert alert-error" role="alert"><span>{ data.GeneralError }</span></div>
+			}
+			<form method="post" action={ "/" + data.Mode } hx-post={ "/" + data.Mode } hx-target="#auth-card" hx-swap="outerHTML" class="space-y-4">
+				if data.Next != "" {
+					<input type="hidden" name="next" value={ data.Next }/>
+				}
+				<label class="form-control"><span class="label-text">Adres e-mail</span><input class="input input-bordered" type="email" name="email" value={ data.Email } autocomplete="username" maxlength="254" required/>
+					if data.Errors["email"] != "" {
+						<span class="mt-1 text-sm text-error">{ data.Errors["email"] }</span>
+					}
+				</label>
+				<label class="form-control"><span class="label-text">Hasło</span><input class="input input-bordered" type="password" name="password" autocomplete={ passwordAutocomplete(data.Mode) } minlength={ passwordMinLength(data.Mode) } maxlength="72" required/>
+					if data.Errors["password"] != "" {
+						<span class="mt-1 text-sm text-error">{ data.Errors["password"] }</span>
+					}
+				</label>
+				if data.Mode == "register" {
+					<label class="form-control"><span class="label-text">Powtórz hasło</span><input class="input input-bordered" type="password" name="password_confirmation" autocomplete="new-password" minlength="12" maxlength="72" required/>
+						if data.Errors["confirmation"] != "" {
+							<span class="mt-1 text-sm text-error">{ data.Errors["confirmation"] }</span>
+						}
+					</label>
+				}
+				<button class="btn btn-primary w-full" type="submit">{ authButton(data.Mode) }</button>
+			</form>
+			if data.Mode == "login" {
+				<p class="text-center text-sm">Nie masz konta? <a class="link link-primary" href="/register">Zarejestruj się</a></p>
+			} else {
+				<p class="text-center text-sm">Masz już konto? <a class="link link-primary" href="/login">Zaloguj się</a></p>
+			}
+		</div></section></main></body>
+	</html>
+}
+
+templ onboardingPage(csrf string) {
+	<!doctype html><html lang="pl" data-theme="corporate"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Witaj w aplikacji</title><link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css"/><script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script></head>
+	<body class="min-h-screen bg-base-200"><main class="mx-auto max-w-xl p-6 lg:p-10"><section class="card bg-base-100 shadow-xl"><div class="card-body"><h1 class="card-title text-3xl">Konto jest gotowe</h1><p>Połącz konto Allegro albo przejdź od razu do panelu.</p><div class="flex flex-wrap gap-2"><a class="btn btn-primary" href="/integration/allegro">Połącz Allegro</a><a class="btn btn-outline" href="/dashboard">Przejdź do panelu</a></div><form method="post" action="/logout"><input type="hidden" name="csrf_token" value={ csrf }/><button class="btn btn-ghost btn-sm" type="submit">Wyloguj się</button></form></div></section></main></body></html>
+}
+
 templ page(products []product) {
 	<!doctype html>
 	<html lang="en" data-theme="corporate">
@@ -21,7 +70,7 @@ templ page(products []product) {
 		</head>
 		<body class="min-h-screen bg-base-200">
 			<main class="mx-auto max-w-5xl p-6 lg:p-10">
-				<div class="flex flex-wrap gap-2 mb-5"><a class="btn btn-primary btn-sm" href="/dashboard">Rentowność</a><a class="btn btn-outline btn-sm" href="/integration/allegro">Integracja Allegro</a><a class="btn btn-outline btn-sm" href="/costs">Koszty zakupu</a></div>
+				<div class="flex flex-wrap items-center gap-2 mb-5"><a class="btn btn-primary btn-sm" href="/dashboard">Rentowność</a><a class="btn btn-outline btn-sm" href="/integration/allegro">Integracja Allegro</a><a class="btn btn-outline btn-sm" href="/costs">Koszty zakupu</a>@logoutForm()</div>
 				<div class="mb-8">
 					<div class="badge badge-primary badge-outline mb-3">GOTH stack</div>
 					<h1 class="text-4xl font-bold">Product catalogue</h1>
@@ -56,7 +105,7 @@ templ page(products []product) {
 templ costsPage(items []productCostItem, report *costImportReport) {
 	<!doctype html>
 	<html lang="pl" data-theme="corporate"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Koszty zakupu produktów</title><link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css"/><script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script></head>
-	<body class="min-h-screen bg-base-200"><main class="mx-auto max-w-7xl p-6 lg:p-10"><a class="link" href="/">← Katalog</a><h1 class="text-3xl font-bold mt-4">Koszty zakupu produktów</h1><p class="text-base-content/70 mt-2">Kwoty brutto za sztukę. Brak kosztu oznacza niepełny wynik marży.</p>
+	<body class="min-h-screen bg-base-200"><main class="mx-auto max-w-7xl p-6 lg:p-10"><div class="flex justify-between"><a class="link" href="/">← Katalog</a>@logoutForm()</div><h1 class="text-3xl font-bold mt-4">Koszty zakupu produktów</h1><p class="text-base-content/70 mt-2">Kwoty brutto za sztukę. Brak kosztu oznacza niepełny wynik marży.</p>
 		if report != nil {
 			<div class={ "alert mt-5", templ.KV("alert-error", len(report.Errors) > 0), templ.KV("alert-success", len(report.Errors) == 0) }><div><h2 class="font-bold">Raport importu</h2><p>Dodane: { strconv.Itoa(report.Added) } · Zaktualizowane: { strconv.Itoa(report.Updated) } · Pominięte: { strconv.Itoa(report.Skipped) } · Błędne: { strconv.Itoa(len(report.Errors)) }</p>
 			if len(report.Errors) > 0 {
@@ -94,7 +143,7 @@ templ allegroPage(status integrationStatus) {
 	<!doctype html>
 	<html lang="pl" data-theme="corporate">
 		<head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Integracja Allegro</title><link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css"/><script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script></head>
-		<body class="min-h-screen bg-base-200"><main class="mx-auto max-w-2xl p-6 lg:p-10"><a class="link" href="/">← Katalog</a><section class="card bg-base-100 shadow-xl mt-5"><div class="card-body"><h1 class="card-title text-3xl">Konto Allegro</h1>
+		<body class="min-h-screen bg-base-200"><main class="mx-auto max-w-2xl p-6 lg:p-10"><div class="flex justify-between"><a class="link" href="/">← Katalog</a>@logoutForm()</div><section class="card bg-base-100 shadow-xl mt-5"><div class="card-body"><h1 class="card-title text-3xl">Konto Allegro</h1>
 			if status.Message != "" {
 				<div class="alert alert-info mt-3">{ status.Message }</div>
 			}
@@ -132,7 +181,7 @@ templ dashboardPage(data dashboardData, problem string) {
 	<html lang="pl" data-theme="corporate">
 		<head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Rentowność sprzedaży Allegro</title><link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css"/><script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script><script src="https://unpkg.com/htmx.org@2.0.6"></script></head>
 		<body class="min-h-screen bg-base-200"><main class="mx-auto max-w-7xl p-4 sm:p-6 lg:p-10">
-			<div class="flex flex-wrap items-center justify-between gap-3"><div><a class="link" href="/">← Katalog</a><h1 class="mt-3 text-3xl font-bold">Rentowność Allegro</h1><p class="mt-1 text-base-content/70">Zysk operacyjny brutto na podstawie zsynchronizowanej sprzedaży i kosztów.</p></div><a class="btn btn-outline btn-sm" href="/costs">Uzupełnij koszty zakupu</a></div>
+			<div class="flex flex-wrap items-center justify-between gap-3"><div><a class="link" href="/">← Katalog</a><h1 class="mt-3 text-3xl font-bold">Rentowność Allegro</h1><p class="mt-1 text-base-content/70">Zysk operacyjny brutto na podstawie zsynchronizowanej sprzedaży i kosztów.</p></div><div><a class="btn btn-outline btn-sm" href="/costs">Uzupełnij koszty zakupu</a>@logoutForm()</div></div>
 			<form class="card mt-6 bg-base-100 shadow" hx-get="/dashboard/results" hx-target="#dashboard-results" hx-swap="innerHTML" hx-indicator="#dashboard-loading">
 				<div class="card-body gap-4 sm:flex-row sm:items-end"><label class="form-control flex-1"><span class="label-text mb-1">Od</span><input class="input input-bordered w-full" type="date" name="from" value={ data.Range.From } required/></label><label class="form-control flex-1"><span class="label-text mb-1">Do</span><input class="input input-bordered w-full" type="date" name="to" value={ data.Range.To } required/></label><input type="hidden" name="sort" value={ data.Sort }/><button class="btn btn-primary" type="submit">Pokaż wyniki</button><button class="btn btn-outline" type="submit" formaction="/dashboard/export.csv" formmethod="get" hx-boost="false">Eksportuj CSV</button><span id="dashboard-loading" class="loading loading-spinner htmx-indicator" aria-label="Ładowanie wyników"></span></div>
 			</form>

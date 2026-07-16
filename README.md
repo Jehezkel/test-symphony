@@ -6,7 +6,7 @@ A small persistent product CRUD and Allegro profitability data foundation using 
 go run .
 ```
 
-The database is migrated automatically at startup. Set `DATABASE_PATH` to choose its location; the default is `data/app.db`. `AUTH_EMAIL` and `AUTH_PASSWORD` are required and create or update the initial account without logging either value. `SESSION_TTL_HOURS` defaults to 24. Set `APP_ENV=production` in HTTPS deployments so the session cookie is marked `Secure`; it is always `HttpOnly` and `SameSite=Lax`.
+The database is migrated automatically at startup. Set `DATABASE_PATH` to choose its location; the default is `data/app.db`. Users can register in the browser. Optional `AUTH_EMAIL` and `AUTH_PASSWORD` create or update an initial account and must be set together; neither value is logged. `SESSION_TTL_HOURS` defaults to 24. Set `APP_ENV=production` in HTTPS deployments so the session cookie is marked `Secure`; it is always `HttpOnly` and `SameSite=Lax`.
 
 Open <http://localhost:8080>. The service health endpoint is `GET /health`.
 
