@@ -1,72 +1,90 @@
 ---
 
 tracker:
-kind: linear
-project_slug: "TU_WSTAW_SLUG_PROJEKTU_LINEAR"
-required_labels:
-- symphony
-active_states:
-- Todo
-- In Progress
-terminal_states:
-- Done
-- Closed
-- Cancelled
-- Canceled
-- Duplicate
+  kind: linear
+  project_slug: "test-symphony"
+  required_labels:
+    - symphony
+  active_states:
+    - Todo
+    - In Progress
+  terminal_states:
+    - Done
+    - Closed
+    - Cancelled
+    - Canceled
+    - Duplicate
 
 polling:
-interval_ms: 30000
+  interval_ms: 30000
 
 workspace:
-root: /home/symphony/workspaces
+  root: /home/symphony/workspaces
 
 hooks:
-after_create: |
-set -eu
+  after_create: |
+    set -eu
 
-```
-test -n "${SOURCE_REPO_URL:-}" || {
-  echo "SOURCE_REPO_URL is not configured"
-  exit 1
-}
+    test -n "${SOURCE_REPO_URL:-}" || {
+      echo "SOURCE_REPO_URL is not configured"
+      exit 1
+    }
 
-git clone "$SOURCE_REPO_URL" .
+    git clone "$SOURCE_REPO_URL" .
+    git fetch origin --prune
 
-git fetch origin --prune
+    if git show-ref --verify --quiet refs/remotes/origin/develop; then
+      git checkout -B develop origin/develop
+    elif git show-ref --verify --quiet refs/remotes/origin/main; then
+      git checkout -B develop origin/main
+    else
+      echo "Neither origin/develop nor origin/main exists"
+      exit 1
+    fi
 
-if git show-ref --verify --quiet refs/remotes/origin/develop; then
-  git checkout -B develop origin/develop
-elif git show-ref --verify --quiet refs/remotes/origin/main; then
-  git checkout -B develop origin/main
-else
-  echo "Neither origin/develop nor origin/main exists"
-  exit 1
-fi
-
-if [ -f go.mod ]; then
-  go mod download
-fi
-```
-
-timeout_ms: 300000
+    if [ -f go.mod ]; then
+      go mod download
+    fi
+  timeout_ms: 300000
 
 agent:
-max_concurrent_agents: 1
-max_turns: 30
-max_retry_backoff_ms: 300000
+  max_concurrent_agents: 1
+  max_turns: 30
+  max_retry_backoff_ms: 300000
 
 codex:
-command: codex --config shell_environment_policy.inherit=all app-server
-approval_policy: never
-thread_sandbox: workspace-write
-turn_sandbox_policy:
-type: workspaceWrite
-networkAccess: true
+  command: codex --config shell_environment_policy.inherit=all app-server
+  approval_policy: never
+  thread_sandbox: workspace-write
+  turn_sandbox_policy:
+    type: workspaceWrite
+    networkAccess: true
 
 ---
 
 You are working autonomously on Linear issue `{{ issue.identifier }}`.
+
+# Source of truth and task selection
+
+This file is the single, durable source of truth for Symphony's tracker
+configuration and delivery process in this repository. Do not create a second
+process document. When the Symphony working model, Linear tracker configuration,
+or delivery process changes, update this file in the same change that introduces
+the new behavior.
+
+Symphony polls the Linear project `test-symphony` every 30 seconds. It may take
+an issue only when all of the following are true:
+
+1. The issue belongs to `test-symphony`.
+2. It has the `symphony` label.
+3. Its state is one of the configured `active_states`: `Todo` or `In Progress`.
+
+Issues in `In Review` or a terminal state are not eligible for implementation.
+The `required_labels` and `active_states` values in the front matter are the
+executable configuration; this section explains, but does not override, them.
+
+The product scope is defined in [the MVP profitability specification](docs/mvp-profitability.md),
+created as part of EZE-10. Read it before making product or domain decisions.
 
 ## Issue
 
@@ -155,6 +173,78 @@ After successful completion:
 3. Include the pull-request URL.
 4. Include the Dokploy application ID and deployment status when applicable.
 5. Move the Linear issue to `Done`.
+
+# Definition of Ready
+
+An issue is ready only when:
+
+1. It meets every task-selection condition above.
+2. Its objective, scope, acceptance criteria, and explicit exclusions are clear
+   enough to validate a result.
+3. Required dependencies, designs, owner decisions, and external access are
+   available, or missing items are explicitly identified as blockers.
+4. The repository and target branch are known and the requested work does not
+   conflict with another active change.
+5. Product behavior is consistent with the MVP specification, or the issue
+   explicitly requests an approved change to that specification.
+
+If these conditions are not met, do not guess at materially different product
+behavior. Record the missing requirement or blocker in the Symphony Workpad and
+follow the reporting rules below.
+
+# Required work cycle
+
+For each eligible issue:
+
+1. Read the full issue, its comments and dependencies; inspect the repository
+   instructions and relevant implementation before changing files.
+2. Move `Todo` to `In Progress` and create or update the single
+   `## Symphony Workpad` comment with the plan.
+3. Synchronize `develop` and create `symphony/<issue>-<short-description>`.
+4. Implement only the issue scope using current project conventions.
+5. Run the project-native generation, tests, vet/lint, and build checks relevant
+   to the change; record every command and result in the Workpad.
+6. Commit a focused, reviewable change with the Linear identifier in the commit
+   message. Never include secrets or unrelated files.
+7. Push the issue branch and open a pull request targeting `develop`, linking
+   the Linear issue and explaining the change and validation.
+8. Wait for configured checks, inspect failures and review comments, and fix
+   problems attributable to the change.
+9. Squash-merge the approved PR, confirm `origin/develop` contains the merge,
+   and perform the configured development deployment and health check.
+10. Add the final evidence, PR, deployment, and health status to the same
+    Workpad; move the issue to `Done` only after the Definition of Done is met.
+
+# Owner decisions (`decision-required`)
+
+An issue carrying `decision-required` requests analysis, not dependent
+implementation. Symphony must:
+
+1. Investigate enough to describe the decision and its constraints.
+2. Prepare two or more viable options with consequences, risks, cost, and a
+   clear recommendation when evidence supports one.
+3. Post the options in Linear, preferably in the existing Symphony Workpad,
+   naming the exact owner decision needed.
+4. Move the issue to `In Review` and stop all implementation that depends on the
+   answer. Independent, already-authorized work may continue only if it cannot
+   prejudice the decision.
+5. Resume dependent work only after the owner records a decision and the issue
+   returns to a configured active state.
+
+# Reporting errors, blockers, and incomplete requirements
+
+- Put the sanitized command or operation, observed result, impact, and next safe
+  step in `## Symphony Workpad`; never include credentials or secret values.
+- Retry only transient failures. For validation or configuration errors,
+  inspect current state and correct the cause before retrying.
+- For incomplete or contradictory requirements, identify the exact gap and the
+  affected acceptance criterion. If a materially different owner choice is
+  required, apply `decision-required` or request that it be applied, document
+  options, move to `In Review`, and pause dependent work.
+- For missing permissions, credentials, or external configuration, document
+  the missing capability and evidence, keep the issue `In Progress`, and do not
+  merge, deploy, or mark partially validated work as complete.
+- Keep one Workpad current rather than creating a stream of progress comments.
 
 # Determine the task type
 
@@ -526,6 +616,27 @@ http://my-vps-tailscale:3000/swagger
 
 # Completion criteria for application tasks
 
+# Definition of Done
+
+An issue is done only when all applicable conditions hold:
+
+1. Every acceptance criterion is satisfied and no out-of-scope changes remain.
+2. Required generated artifacts are current and all relevant tests, vet/lint,
+   and builds pass.
+3. The change has a focused commit on an issue branch and is pushed to the
+   remote without secrets.
+4. A pull request targeting `develop` documents the issue, change, and
+   validation; required checks and review feedback are resolved.
+5. The PR is squash-merged and the merge is confirmed on `origin/develop`.
+6. Applicable Dokploy deployment succeeds and the documented health check
+   passes.
+7. The single Symphony Workpad contains the final validation commands, PR URL,
+   deployment result, non-secret resource IDs when applicable, and no unresolved
+   blocker.
+8. Linear is moved to `Done` only after conditions 1-7 are met. For a
+   no-repository-change or infrastructure-only issue, omit only the steps that
+   genuinely do not apply and record why.
+
 An application task is complete only when:
 
 1. Acceptance criteria are satisfied.
@@ -587,4 +698,3 @@ The final response must contain only:
 
 Do not ask the user for follow-up actions unless work is blocked by a missing
 external permission or secret.
-
