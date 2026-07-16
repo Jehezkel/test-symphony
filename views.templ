@@ -21,7 +21,7 @@ templ page(products []product) {
 		</head>
 		<body class="min-h-screen bg-base-200">
 			<main class="mx-auto max-w-5xl p-6 lg:p-10">
-				<div class="flex gap-2 mb-5"><a class="btn btn-outline btn-sm" href="/integration/allegro">Integracja Allegro</a><a class="btn btn-primary btn-sm" href="/costs">Koszty zakupu</a></div>
+				<div class="flex flex-wrap gap-2 mb-5"><a class="btn btn-primary btn-sm" href="/dashboard">Rentowność</a><a class="btn btn-outline btn-sm" href="/integration/allegro">Integracja Allegro</a><a class="btn btn-outline btn-sm" href="/costs">Koszty zakupu</a></div>
 				<div class="mb-8">
 					<div class="badge badge-primary badge-outline mb-3">GOTH stack</div>
 					<h1 class="text-4xl font-bold">Product catalogue</h1>
@@ -125,6 +125,89 @@ templ allegroPage(status integrationStatus) {
 			}
 		</div></section></main></body>
 	</html>
+}
+
+templ dashboardPage(data dashboardData, problem string) {
+	<!doctype html>
+	<html lang="pl" data-theme="corporate">
+		<head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Rentowność sprzedaży Allegro</title><link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css"/><script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script><script src="https://unpkg.com/htmx.org@2.0.6"></script></head>
+		<body class="min-h-screen bg-base-200"><main class="mx-auto max-w-7xl p-4 sm:p-6 lg:p-10">
+			<div class="flex flex-wrap items-center justify-between gap-3"><div><a class="link" href="/">← Katalog</a><h1 class="mt-3 text-3xl font-bold">Rentowność Allegro</h1><p class="mt-1 text-base-content/70">Zysk operacyjny brutto na podstawie zsynchronizowanej sprzedaży i kosztów.</p></div><a class="btn btn-outline btn-sm" href="/costs">Uzupełnij koszty zakupu</a></div>
+			<form class="card mt-6 bg-base-100 shadow" hx-get="/dashboard/results" hx-target="#dashboard-results" hx-swap="innerHTML" hx-indicator="#dashboard-loading">
+				<div class="card-body gap-4 sm:flex-row sm:items-end"><label class="form-control flex-1"><span class="label-text mb-1">Od</span><input class="input input-bordered w-full" type="date" name="from" value={ data.Range.From } required/></label><label class="form-control flex-1"><span class="label-text mb-1">Do</span><input class="input input-bordered w-full" type="date" name="to" value={ data.Range.To } required/></label><input type="hidden" name="sort" value={ data.Sort }/><button class="btn btn-primary" type="submit">Pokaż wyniki</button><span id="dashboard-loading" class="loading loading-spinner htmx-indicator" aria-label="Ładowanie wyników"></span></div>
+			</form>
+			<div id="dashboard-results" class="mt-6">
+				if problem != "" {
+					@dashboardError(problem)
+				} else {
+					@dashboardResults(data)
+				}
+			</div>
+			<div id="offer-detail" class="mt-6"></div>
+		</main></body>
+	</html>
+}
+
+templ dashboardError(message string) { <div class="alert alert-error" role="alert"><span>{ message }</span></div> }
+
+templ dashboardResults(data dashboardData) {
+	if len(data.Offers) == 0 {
+		<section class="card bg-base-100 shadow">
+			<div class="card-body items-center text-center"><h2 class="card-title">Brak sprzedaży w tym okresie</h2><p class="text-base-content/70">Zmień zakres dat lub zsynchronizuj konto Allegro.</p><a class="btn btn-outline btn-sm" href="/integration/allegro">Przejdź do synchronizacji</a></div>
+		</section>
+	}
+	if len(data.Offers) > 0 {
+		if data.KPI.Estimated {
+			<div class="alert alert-warning mb-5"><span><strong>Wynik szacunkowy.</strong> Co najmniej jedna sprzedaż ma brakujący koszt lub wymaga weryfikacji.</span></div>
+		}
+		<section class="grid grid-cols-2 gap-3 lg:grid-cols-6">
+			@dashboardStat("Przychód", formatMoney(data.KPI.Revenue,data.KPI.Currency), "")
+			@dashboardStat("Koszt produktów", formatMoney(data.KPI.Purchase,data.KPI.Currency), "")
+			@dashboardStat("Opłaty Allegro", formatMoney(data.KPI.Allegro,data.KPI.Currency), "")
+			@dashboardStat("Pozostałe koszty", formatMoney(data.KPI.Other,data.KPI.Currency), "")
+			@dashboardStat("Zysk", formatMoney(data.KPI.Profit,data.KPI.Currency), profitClass(data.KPI.Profit))
+			@dashboardStat("Marża", formatMargin(data.KPI.Margin), profitClass(data.KPI.Profit))
+		</section>
+		<section class="card mt-6 bg-base-100 shadow"><div class="card-body px-3 sm:px-6"><div class="flex flex-wrap items-center justify-between gap-2"><h2 class="card-title">Oferty</h2><span class="text-sm text-base-content/60">Kliknij nagłówek, aby posortować</span></div><div class="overflow-x-auto"><table class="table table-zebra"><thead><tr><th>Oferta</th><th><button class="link" hx-get={ dashboardSortURL("sales",data.Range) } hx-target="#dashboard-results">Sprzedaż</button></th><th><button class="link" hx-get={ dashboardSortURL("revenue",data.Range) } hx-target="#dashboard-results">Przychód</button></th><th><button class="link" hx-get={ dashboardSortURL("profit",data.Range) } hx-target="#dashboard-results">Zysk ↑</button></th><th><button class="link" hx-get={ dashboardSortURL("margin",data.Range) } hx-target="#dashboard-results">Marża ↑</button></th><th></th></tr></thead><tbody>
+			for _, item := range data.Offers {
+				<tr class={ templ.KV("bg-error/10",item.Profit<0) }><td class="min-w-56"><strong>{ item.Name }</strong><br/><span class="text-xs text-base-content/60">{ item.AllegroID }
+					if item.SKU!="" {
+						<span> · { item.SKU }</span>
+					}
+				</span><div class="mt-1 flex flex-wrap gap-1">
+					if item.Profit<0 {
+						<span class="badge badge-error badge-sm">Nierentowna</span>
+					}
+					if item.MissingCost {
+						<span class="badge badge-warning badge-sm">Brak kosztu zakupu</span>
+					} else if item.Estimated {
+						<span class="badge badge-warning badge-sm">Szacunkowa</span>
+					}
+				</div></td><td>{ strconv.FormatInt(item.Sales,10) }</td><td>{ formatMoney(item.Revenue,item.Currency) }</td><td class={ templ.KV("font-bold text-error",item.Profit<0),templ.KV("font-bold text-success",item.Profit>=0) }>{ formatMoney(item.Profit,item.Currency) }</td><td>{ formatMargin(item.Margin) }</td><td><button class="btn btn-ghost btn-sm" hx-get={ offerDetailURL(item.ID,data.Range) } hx-target="#offer-detail" hx-swap="innerHTML" hx-indicator="#dashboard-loading">Szczegóły</button></td></tr>
+			}
+			</tbody></table></div></div></section>
+	}
+}
+
+templ dashboardStat(label,value string, className string) { <div class="stat rounded-box bg-base-100 p-4 shadow"><div class="stat-title text-xs sm:text-sm">{ label }</div><div class={ "stat-value text-lg sm:text-xl", className }>{ value }</div></div> }
+
+templ dashboardOfferDetail(item dashboardOfferItem, rng dashboardRange) {
+	<section class="card bg-base-100 shadow-xl"><div class="card-body px-3 sm:px-6"><div class="flex justify-between gap-3"><div><h2 class="card-title">{ item.Name }</h2><p class="text-sm text-base-content/60">Oferta { item.AllegroID } · { rng.From }–{ rng.To }</p></div><button class="btn btn-circle btn-ghost btn-sm" onclick="document.getElementById('offer-detail').innerHTML=''" aria-label="Zamknij">✕</button></div>
+		<div class="grid grid-cols-2 gap-2 md:grid-cols-5">@dashboardStat("Przychód",formatMoney(item.Revenue,item.Currency),"") @dashboardStat("Koszt produktów",formatMoney(item.Purchase,item.Currency),"") @dashboardStat("Opłaty Allegro",formatMoney(item.Allegro,item.Currency),"") @dashboardStat("Inne koszty",formatMoney(item.Other,item.Currency),"") @dashboardStat("Zysk",formatMoney(item.Profit,item.Currency),profitClass(item.Profit))</div>
+		<div class="overflow-x-auto"><table class="table"><thead><tr><th>Sprzedaż</th><th>Szt.</th><th>Przychód</th><th>Produkt</th><th>Allegro</th><th>Inne</th><th>Zysk</th><th>Status</th></tr></thead><tbody>
+			for _, line := range item.Lines {
+				<tr><td>{ shortDate(line.BoughtAt) }<br/><span class="font-mono text-xs">{ line.AllegroOrderID }</span></td><td>{ strconv.FormatInt(line.Quantity,10) }</td><td>{ formatMoney(line.Revenue,item.Currency) }</td><td>{ formatMoney(line.Purchase,item.Currency) }</td><td>{ formatMoney(line.Allegro,item.Currency) }</td><td>{ formatMoney(line.Other,item.Currency) }</td><td class={ templ.KV("text-error font-bold",line.Profit<0) }>{ formatMoney(line.Profit,item.Currency) }</td><td>
+					if line.Completeness!="complete" {
+						<span class="badge badge-warning badge-sm">Niepełne koszty</span>
+					} else if line.Estimated {
+						<span class="badge badge-warning badge-sm">Szacunek</span>
+					} else {
+						<span class="badge badge-success badge-sm">Kompletne</span>
+					}
+				</td></tr>
+			}
+		</tbody></table></div>
+	</div></section>
 }
 
 templ productRow(item product) {

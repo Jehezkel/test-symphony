@@ -1,12 +1,62 @@
 package main
 
 import (
+	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
 )
+
+func TestDashboardRendersKPIsLossesAndOfferDetail(t *testing.T) {
+	db, handler := dashboardTestHandler(t)
+	mustExec(t, db, `INSERT INTO products(id,user_id,sku,name) VALUES (1,1,'SKU-1','Drogi produkt'),(2,1,'SKU-2','Bez kosztu')`)
+	mustExec(t, db, `INSERT INTO allegro_integrations(id,user_id,allegro_account_id) VALUES (1,1,'seller')`)
+	mustExec(t, db, `INSERT INTO allegro_offers(id,integration_id,product_id,allegro_offer_id,external_sku,name,status) VALUES (1,1,1,'offer-1','SKU-1','Drogi produkt','ACTIVE'),(2,1,2,'offer-2','SKU-2','Bez kosztu','ACTIVE')`)
+	mustExec(t, db, `INSERT INTO product_costs(product_id,unit_cost_minor,currency,valid_from,source) VALUES (1,10000,'PLN','1970-01-01','manual')`)
+	mustExec(t, db, `INSERT INTO allegro_orders(id,integration_id,allegro_order_id,status,currency,buyer_delivery_minor,seller_shipping_cost_minor,bought_at,source_updated_at) VALUES (1,1,'order-1','READY_FOR_PROCESSING','PLN',1000,500,'2026-07-10T10:00:00Z','2026-07-10T10:00:00Z'),(2,1,'order-2','READY_FOR_PROCESSING','PLN',0,0,'2026-07-11T10:00:00Z','2026-07-11T10:00:00Z')`)
+	mustExec(t, db, `INSERT INTO order_items(id,order_id,offer_id,allegro_line_item_id,allegro_offer_id,name,quantity,unit_price_minor,currency,bought_at) VALUES (1,1,1,'line-1','offer-1','Drogi produkt',1,10000,'PLN','2026-07-10T10:00:00Z'),(2,2,2,'line-2','offer-2','Bez kosztu',2,2500,'PLN','2026-07-11T10:00:00Z')`)
+	mustExec(t, db, `INSERT INTO allegro_fees(integration_id,order_id,offer_id,allegro_fee_id,type_id,type_name,value_minor,currency,occurred_at) VALUES (1,1,1,'fee-1','commission','Prowizja',-1500,'PLN','2026-07-10'),(1,2,2,'fee-2','commission','Prowizja',-500,'PLN','2026-07-11')`)
+
+	response := request(t, handler, http.MethodGet, "/dashboard?from=2026-07-01&to=2026-07-31", nil)
+	body := response.Body.String()
+	if response.Code != http.StatusOK {
+		t.Fatalf("dashboard status = %d: %s", response.Code, body)
+	}
+	for _, want := range []string{"160.00 PLN", "100.00 PLN", "20.00 PLN", "5.00 PLN", "35.00 PLN", "Wynik szacunkowy", "Nierentowna", "Brak kosztu zakupu"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("dashboard does not contain %q", want)
+		}
+	}
+
+	response = request(t, handler, http.MethodGet, "/dashboard/offers/1?from=2026-07-01&to=2026-07-31", nil)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "order-1") || !strings.Contains(response.Body.String(), "Koszt produktów") {
+		t.Fatalf("offer detail = %d %q", response.Code, response.Body.String())
+	}
+}
+
+func TestDashboardEmptyAndInvalidRangeStates(t *testing.T) {
+	_, handler := dashboardTestHandler(t)
+	response := request(t, handler, http.MethodGet, "/dashboard?from=2026-07-01&to=2026-07-31", nil)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Brak sprzedaży w tym okresie") {
+		t.Fatalf("empty dashboard = %d %q", response.Code, response.Body.String())
+	}
+	response = request(t, handler, http.MethodGet, "/dashboard/results?from=bad&to=2026-07-31", nil)
+	if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), "alert-error") {
+		t.Fatalf("invalid dashboard = %d %q", response.Code, response.Body.String())
+	}
+}
+
+func dashboardTestHandler(t *testing.T) (*sql.DB, http.Handler) {
+	t.Helper()
+	db, err := openDatabase(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return db, newApp(newProductStore(db))
+}
 
 func TestProductCRUD(t *testing.T) {
 	handler := testHandler(t)
