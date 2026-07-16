@@ -29,4 +29,9 @@ to `24`. Dokploy must set `APP_ENV=production` so session cookies use `Secure`;
 the public Traefik route must use HTTPS with a certificate valid for its host.
 Passwords and session tokens are never stored in deployment files or logs.
 
+Account recovery additionally requires `APP_BASE_URL`, `EMAIL_PROVIDER=smtp`,
+`SMTP_HOST`, `SMTP_PORT`, `EMAIL_FROM`, and provider-dependent
+`SMTP_USERNAME`/secret `SMTP_PASSWORD`. One-time tokens are never stored in
+plain text or written to application logs.
+
 Deployments are triggered automatically by pushes to `develop`. For a new application with no checkout yet, call `POST /api/application.deploy` with the application ID so Dokploy clones the repository before building it. Use `POST /api/application.redeploy` only after a successful deployment has created the application checkout. Inspect the application and its deployment history in the Dokploy UI or through the authenticated Dokploy API. Before deploying authentication, configure its required environment variables and a valid HTTPS route in Dokploy.
