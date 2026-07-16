@@ -23,4 +23,10 @@ Dokploy tracks `Jehezkel/test-symphony` on the `develop` branch through the exis
   `DATABASE_PATH` defaults to `/data/app.db` in the image. The image declares
   `/data` as the persistent SQLite volume.
 
-Deployments are triggered automatically by pushes to `develop`. For a new application with no checkout yet, call `POST /api/application.deploy` with the application ID so Dokploy clones the repository before building it. Use `POST /api/application.redeploy` only after a successful deployment has created the application checkout. Inspect the application and its deployment history in the Dokploy UI or through the authenticated Dokploy API. No manual configuration remains.
+Authentication requires `AUTH_EMAIL` and secret `AUTH_PASSWORD`. Optional
+`AUTH_DISPLAY_NAME` labels the initial account, and `SESSION_TTL_HOURS` defaults
+to `24`. Dokploy must set `APP_ENV=production` so session cookies use `Secure`;
+the public Traefik route must use HTTPS with a certificate valid for its host.
+Passwords and session tokens are never stored in deployment files or logs.
+
+Deployments are triggered automatically by pushes to `develop`. For a new application with no checkout yet, call `POST /api/application.deploy` with the application ID so Dokploy clones the repository before building it. Use `POST /api/application.redeploy` only after a successful deployment has created the application checkout. Inspect the application and its deployment history in the Dokploy UI or through the authenticated Dokploy API. Before deploying authentication, configure its required environment variables and a valid HTTPS route in Dokploy.
