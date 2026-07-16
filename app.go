@@ -11,10 +11,11 @@ import (
 )
 
 type app struct {
-	products *productStore
-	allegro  *allegroService
-	profits  *profitabilityEngine
-	auth     *authService
+	products          *productStore
+	allegro           *allegroService
+	profits           *profitabilityEngine
+	auth              *authService
+	enforceOnboarding bool
 }
 
 type authFormData struct {
@@ -96,7 +97,7 @@ func requestUserID(r *http.Request) int64 {
 }
 
 func newAuthenticatedApp(products *productStore, allegro *allegroService, auth *authService) http.Handler {
-	a := &app{products: products, profits: newProfitabilityEngine(products.db), allegro: allegro, auth: auth}
+	a := &app{products: products, profits: newProfitabilityEngine(products.db), allegro: allegro, auth: auth, enforceOnboarding: true}
 	public := http.NewServeMux()
 	public.HandleFunc("GET /health", a.health)
 	public.HandleFunc("GET /login", a.loginPage)
@@ -249,17 +250,6 @@ func (a *app) renderAuth(w http.ResponseWriter, r *http.Request, data authFormDa
 	w.WriteHeader(status)
 	if err := authPage(data).Render(r.Context(), w); err != nil {
 		return
-	}
-}
-
-func (a *app) onboarding(w http.ResponseWriter, r *http.Request) {
-	cookie, _ := r.Cookie(sessionCookieName)
-	token := ""
-	if cookie != nil {
-		token = csrfToken(cookie.Value)
-	}
-	if err := onboardingPage(token).Render(r.Context(), w); err != nil {
-		http.Error(w, "render onboarding", http.StatusInternalServerError)
 	}
 }
 

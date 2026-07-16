@@ -46,9 +46,41 @@ templ authPage(data authFormData) {
 	</html>
 }
 
-templ onboardingPage(csrf string) {
-	<!doctype html><html lang="pl" data-theme="corporate"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Witaj w aplikacji</title><link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css"/><script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script></head>
-	<body class="min-h-screen bg-base-200"><main class="mx-auto max-w-xl p-6 lg:p-10"><section class="card bg-base-100 shadow-xl"><div class="card-body"><h1 class="card-title text-3xl">Konto jest gotowe</h1><p>Połącz konto Allegro albo przejdź od razu do panelu.</p><div class="flex flex-wrap gap-2"><a class="btn btn-primary" href="/integration/allegro">Połącz Allegro</a><a class="btn btn-outline" href="/dashboard">Przejdź do panelu</a></div><form method="post" action="/logout"><input type="hidden" name="csrf_token" value={ csrf }/><button class="btn btn-ghost btn-sm" type="submit">Wyloguj się</button></form></div></section></main></body></html>
+templ onboardingPage(progress onboardingProgress, problem string) {
+	<!doctype html><html lang="pl" data-theme="corporate"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Skonfiguruj konto</title><link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css"/><script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script></head>
+	<body class="min-h-screen bg-base-200"><main class="mx-auto max-w-3xl p-4 sm:p-6 lg:p-10"><div class="mb-6 flex items-start justify-between gap-4"><div><h1 class="text-3xl font-bold">Pierwszy raport rentowności</h1><p class="mt-2 text-base-content/70">Wykonaj cztery kroki. Postęp zapisuje się automatycznie na podstawie danych konta.</p></div>@logoutForm()</div>
+		if problem != "" {
+			<div class="alert alert-error mb-5" role="alert"><span>{ problem }</span></div>
+		}
+		<ol class="space-y-4" aria-label="Postęp konfiguracji">
+			@onboardingStep(1, "Połącz konto Allegro", "Udziel dostępu tylko do odczytu ofert, zamówień i opłat.", progress.Connected, !progress.Connected, "/integration/allegro", "Połącz Allegro")
+			@onboardingStep(2, "Wykonaj pierwszą synchronizację", "Pobierz oferty i sprzedaż potrzebne do obliczeń.", progress.Synced, progress.Connected && !progress.Synced, "/integration/allegro", "Przejdź do synchronizacji")
+			if progress.SyncRunning {
+				<div class="alert alert-info" role="status"><span class="loading loading-spinner loading-sm" aria-hidden="true"></span><span>Synchronizacja trwa. Odśwież stronę za chwilę.</span></div>
+			}
+			if progress.SyncFailed {
+				<div class="alert alert-error" role="alert"><span><strong>Synchronizacja nie powiodła się.</strong> { progress.SyncError }</span><a class="btn btn-sm" href="/integration/allegro">Spróbuj ponownie</a></div>
+			}
+			@onboardingStep(3, "Uzupełnij koszty produktów", "Każda zsynchronizowana oferta musi mieć przypisany koszt zakupu.", progress.CostsComplete, progress.Synced && !progress.CostsComplete, "/costs", "Uzupełnij koszty")
+			@onboardingStep(4, "Otwórz raport rentowności", "Sprawdź pierwszy wynik i przejdź do codziennej pracy.", progress.ReportOpened, progress.readyForReport() && !progress.ReportOpened, "/dashboard?onboarding=1", "Otwórz raport")
+		</ol>
+	</main></body></html>
+}
+
+templ onboardingStep(number int, title, description string, done, active bool, href, cta string) {
+	<li class={ "card bg-base-100 shadow", templ.KV("ring-2 ring-primary", active) }><div class="card-body p-5 sm:p-6"><div class="flex gap-4"><div class={ "flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-bold", templ.KV("bg-success text-success-content", done), templ.KV("bg-primary text-primary-content", active), templ.KV("bg-base-300", !done && !active) }>{ strconv.Itoa(number) }</div><div class="min-w-0 flex-1"><div class="flex flex-wrap items-center gap-2"><h2 class="card-title text-lg">{ title }</h2>
+		if done {
+			<span class="badge badge-success">Gotowe</span>
+		} else if active {
+			<span class="badge badge-primary">Następny krok</span>
+		} else {
+			<span class="badge badge-ghost">Oczekuje</span>
+		}
+	</div><p class="mt-1 text-base-content/70">{ description }</p>
+		if active {
+			<a class="btn btn-primary mt-4 w-full sm:w-auto" href={ href }>{ cta }</a>
+		}
+	</div></div></div></li>
 }
 
 templ page(products []product) {
