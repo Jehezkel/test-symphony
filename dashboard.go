@@ -137,7 +137,7 @@ func (a *app) dashboardOffer(w http.ResponseWriter, r *http.Request) {
 func (a *app) loadDashboard(ctx context.Context, rng dashboardRange, sortBy string) (dashboardData, error) {
 	data := dashboardData{Range: rng, Sort: sortBy, KPI: dashboardKPI{Currency: "PLN"}}
 	to, _ := time.Parse("2006-01-02", rng.To)
-	rows, err := a.products.db.QueryContext(ctx, `SELECT o.id,o.allegro_order_id,o.bought_at FROM allegro_orders o JOIN allegro_integrations i ON i.id=o.integration_id WHERE i.user_id=1 AND o.bought_at>=? AND o.bought_at<? ORDER BY o.bought_at,o.id`, rng.From, to.AddDate(0, 0, 1).Format("2006-01-02"))
+	rows, err := a.products.db.QueryContext(ctx, `SELECT o.id,o.allegro_order_id,o.bought_at FROM allegro_orders o JOIN allegro_integrations i ON i.id=o.integration_id WHERE i.user_id=? AND o.bought_at>=? AND o.bought_at<? ORDER BY o.bought_at,o.id`, 1, rng.From, to.AddDate(0, 0, 1).Format("2006-01-02"))
 	if err != nil {
 		return data, fmt.Errorf("load dashboard orders: %w", err)
 	}

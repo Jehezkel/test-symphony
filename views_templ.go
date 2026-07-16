@@ -567,7 +567,7 @@ func dashboardPage(data dashboardData, problem string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "\"><button class=\"btn btn-primary\" type=\"submit\">Pokaż wyniki</button><span id=\"dashboard-loading\" class=\"loading loading-spinner htmx-indicator\" aria-label=\"Ładowanie wyników\"></span></div></form><div id=\"dashboard-results\" class=\"mt-6\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "\"><button class=\"btn btn-primary\" type=\"submit\">Pokaż wyniki</button><button class=\"btn btn-outline\" type=\"submit\" formaction=\"/dashboard/export.csv\" formmethod=\"get\" hx-boost=\"false\">Eksportuj CSV</button><span id=\"dashboard-loading\" class=\"loading loading-spinner htmx-indicator\" aria-label=\"Ładowanie wyników\"></span></div></form><div id=\"dashboard-results\" class=\"mt-6\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

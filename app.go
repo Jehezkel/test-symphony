@@ -37,6 +37,7 @@ func newApp(products *productStore, services ...*allegroService) http.Handler {
 	mux.HandleFunc("POST /integration/allegro/sync", a.allegroSync)
 	mux.HandleFunc("GET /dashboard", a.dashboard)
 	mux.HandleFunc("GET /dashboard/results", a.dashboardResults)
+	mux.HandleFunc("GET /dashboard/export.csv", a.dashboardExport)
 	mux.HandleFunc("GET /dashboard/offers/{id}", a.dashboardOffer)
 	return mux
 }
