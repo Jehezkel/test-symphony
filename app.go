@@ -32,7 +32,12 @@ func (a *app) index(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if err := page(a.products.list()).Render(r.Context(), w); err != nil {
+	products, err := a.products.list()
+	if err != nil {
+		http.Error(w, "load products", http.StatusInternalServerError)
+		return
+	}
+	if err := page(products).Render(r.Context(), w); err != nil {
 		http.Error(w, "render page", http.StatusInternalServerError)
 	}
 }
@@ -42,7 +47,11 @@ func (a *app) createProduct(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	item := a.products.create(name, price, ean)
+	item, err := a.products.create(name, price, ean)
+	if err != nil {
+		http.Error(w, "create product", http.StatusInternalServerError)
+		return
+	}
 	if err := productRow(item).Render(r.Context(), w); err != nil {
 		http.Error(w, "render product", http.StatusInternalServerError)
 	}
@@ -59,7 +68,7 @@ func (a *app) editProduct(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) updateProduct(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.Atoi(r.PathValue("id"))
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		http.Error(w, "invalid product id", http.StatusBadRequest)
 		return
@@ -73,13 +82,17 @@ func (a *app) updateProduct(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	if err != nil {
+		http.Error(w, "update product", http.StatusInternalServerError)
+		return
+	}
 	if err := productRow(item).Render(r.Context(), w); err != nil {
 		http.Error(w, "render product", http.StatusInternalServerError)
 	}
 }
 
 func (a *app) deleteProduct(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.Atoi(r.PathValue("id"))
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		http.Error(w, "invalid product id", http.StatusBadRequest)
 		return
@@ -87,12 +100,15 @@ func (a *app) deleteProduct(w http.ResponseWriter, r *http.Request) {
 	if err := a.products.delete(id); errors.Is(err, errProductNotFound) {
 		http.NotFound(w, r)
 		return
+	} else if err != nil {
+		http.Error(w, "delete product", http.StatusInternalServerError)
+		return
 	}
 	w.WriteHeader(http.StatusOK)
 }
 
 func (a *app) findProduct(w http.ResponseWriter, r *http.Request) (product, bool) {
-	id, err := strconv.Atoi(r.PathValue("id"))
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		http.Error(w, "invalid product id", http.StatusBadRequest)
 		return product{}, false
@@ -102,24 +118,29 @@ func (a *app) findProduct(w http.ResponseWriter, r *http.Request) (product, bool
 		http.NotFound(w, r)
 		return product{}, false
 	}
+	if err != nil {
+		http.Error(w, "load product", http.StatusInternalServerError)
+		return product{}, false
+	}
 	return item, true
 }
 
-func productFields(w http.ResponseWriter, r *http.Request) (string, string, string, bool) {
+func productFields(w http.ResponseWriter, r *http.Request) (string, int64, string, bool) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "invalid form", http.StatusBadRequest)
-		return "", "", "", false
+		return "", 0, "", false
 	}
 	name := strings.TrimSpace(r.FormValue("name"))
 	price := strings.TrimSpace(r.FormValue("price"))
 	ean := strings.TrimSpace(r.FormValue("ean"))
 	if name == "" || price == "" || ean == "" {
 		http.Error(w, "name, price and EAN are required", http.StatusUnprocessableEntity)
-		return "", "", "", false
+		return "", 0, "", false
 	}
-	if _, err := strconv.ParseFloat(price, 64); err != nil {
-		http.Error(w, "price must be a number", http.StatusUnprocessableEntity)
-		return "", "", "", false
+	priceMinor, err := parseMinorUnits(price)
+	if err != nil || priceMinor < 0 {
+		http.Error(w, "price must be a non-negative amount with at most two decimal places", http.StatusUnprocessableEntity)
+		return "", 0, "", false
 	}
-	return name, price, ean, true
+	return name, priceMinor, ean, true
 }

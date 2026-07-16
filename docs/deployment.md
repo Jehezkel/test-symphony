@@ -12,6 +12,6 @@ Dokploy tracks `Jehezkel/test-symphony` on the `develop` branch through the exis
 
 - Application: <http://app-bypass-haptic-sensor-4ooyls-ed57d3-85-215-207-20.traefik.me>
 - Health check: <http://app-bypass-haptic-sensor-4ooyls-ed57d3-85-215-207-20.traefik.me/health>
-- Required environment variables: none. `PORT` is optional and defaults to `8080` in the image.
+- Required environment variables: none. `PORT` is optional and defaults to `8080`; `DATABASE_PATH` defaults to `/data/app.db` in the image. The image declares `/data` as the persistent SQLite volume.
 
 Deployments are triggered automatically by pushes to `develop`. For a new application with no checkout yet, call `POST /api/application.deploy` with the application ID so Dokploy clones the repository before building it. Use `POST /api/application.redeploy` only after a successful deployment has created the application checkout. Inspect the application and its deployment history in the Dokploy UI or through the authenticated Dokploy API. No manual configuration remains.

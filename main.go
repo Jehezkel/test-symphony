@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 )
 
 func main() {
@@ -12,7 +13,22 @@ func main() {
 		addr = ":" + port
 	}
 
-	server := &http.Server{Addr: addr, Handler: newApp(newProductStore())}
+	databasePath := os.Getenv("DATABASE_PATH")
+	if databasePath == "" {
+		databasePath = "data/app.db"
+	}
+	if dir := filepath.Dir(databasePath); dir != "." {
+		if err := os.MkdirAll(dir, 0o750); err != nil {
+			log.Fatalf("create database directory: %v", err)
+		}
+	}
+	db, err := openDatabase(databasePath)
+	if err != nil {
+		log.Fatalf("initialize database: %v", err)
+	}
+	defer db.Close()
+
+	server := &http.Server{Addr: addr, Handler: newApp(newProductStore(db))}
 	log.Printf("product app listening on %s", addr)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
