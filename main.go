@@ -30,6 +30,23 @@ func main() {
 		log.Fatalf("initialize database: %v", err)
 	}
 	defer db.Close()
+	authEmail := os.Getenv("AUTH_EMAIL")
+	authPassword := os.Getenv("AUTH_PASSWORD")
+	if authEmail == "" || authPassword == "" {
+		log.Fatal("AUTH_EMAIL and AUTH_PASSWORD must be set")
+	}
+	sessionTTL := 24 * time.Hour
+	if raw := os.Getenv("SESSION_TTL_HOURS"); raw != "" {
+		hours, parseErr := strconv.Atoi(raw)
+		if parseErr != nil || hours <= 0 {
+			log.Fatal("SESSION_TTL_HOURS must be a positive integer")
+		}
+		sessionTTL = time.Duration(hours) * time.Hour
+	}
+	auth := newAuthService(db, sessionTTL, os.Getenv("APP_ENV") == "production")
+	if err := auth.ensureUser(context.Background(), authEmail, os.Getenv("AUTH_DISPLAY_NAME"), authPassword); err != nil {
+		log.Fatalf("initialize authentication: %v", err)
+	}
 
 	allegroConfig, err := allegroConfigFromEnv()
 	if err != nil {
@@ -45,7 +62,7 @@ func main() {
 		interval = time.Duration(minutes) * time.Minute
 	}
 	allegro.startScheduler(context.Background(), interval)
-	server := &http.Server{Addr: addr, Handler: newApp(newProductStore(db), allegro)}
+	server := &http.Server{Addr: addr, Handler: newAuthenticatedApp(newProductStore(db), allegro, auth)}
 	log.Printf("product app listening on %s", addr)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)

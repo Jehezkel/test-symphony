@@ -1,17 +1,20 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type app struct {
 	products *productStore
 	allegro  *allegroService
 	profits  *profitabilityEngine
+	auth     *authService
 }
 
 func newApp(products *productStore, services ...*allegroService) http.Handler {
@@ -40,6 +43,90 @@ func newApp(products *productStore, services ...*allegroService) http.Handler {
 	mux.HandleFunc("GET /dashboard/export.csv", a.dashboardExport)
 	mux.HandleFunc("GET /dashboard/offers/{id}", a.dashboardOffer)
 	return mux
+}
+
+func newAuthenticatedApp(products *productStore, allegro *allegroService, auth *authService) http.Handler {
+	a := &app{products: products, profits: newProfitabilityEngine(products.db), allegro: allegro, auth: auth}
+	public := http.NewServeMux()
+	public.HandleFunc("GET /health", a.health)
+	public.HandleFunc("GET /login", a.loginPage)
+	public.HandleFunc("POST /login", a.login)
+
+	protected := http.NewServeMux()
+	protected.HandleFunc("GET /", a.index)
+	protected.HandleFunc("POST /logout", a.logout)
+	protected.HandleFunc("POST /products", a.createProduct)
+	protected.HandleFunc("GET /products/{id}/edit", a.editProduct)
+	protected.HandleFunc("PUT /products/{id}", a.updateProduct)
+	protected.HandleFunc("DELETE /products/{id}", a.deleteProduct)
+	protected.HandleFunc("GET /costs", a.costs)
+	protected.HandleFunc("POST /costs/{id}", a.updateCost)
+	protected.HandleFunc("GET /costs/template.csv", a.costTemplate)
+	protected.HandleFunc("POST /costs/import", a.importCosts)
+	protected.HandleFunc("GET /integration/allegro", a.allegroStatus)
+	protected.HandleFunc("GET /oauth/allegro/start", a.allegroStart)
+	protected.HandleFunc("GET /oauth/allegro/callback", a.allegroCallback)
+	protected.HandleFunc("POST /integration/allegro/disconnect", a.allegroDisconnect)
+	protected.HandleFunc("POST /integration/allegro/sync", a.allegroSync)
+	protected.HandleFunc("GET /dashboard", a.dashboard)
+	protected.HandleFunc("GET /dashboard/results", a.dashboardResults)
+	protected.HandleFunc("GET /dashboard/export.csv", a.dashboardExport)
+	protected.HandleFunc("GET /dashboard/offers/{id}", a.dashboardOffer)
+
+	public.Handle("/", a.requireUser(protected))
+	return public
+}
+
+func (a *app) requireUser(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cookie, err := r.Cookie(sessionCookieName)
+		if err != nil {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+		u, err := a.auth.userForToken(r.Context(), cookie.Value)
+		if err != nil {
+			http.SetCookie(w, a.auth.cookie("", time.Unix(1, 0)))
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userContextKey{}, u)))
+	})
+}
+
+func (a *app) loginPage(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write([]byte(`<!doctype html><html lang="pl"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Logowanie</title><body><main><h1>Logowanie</h1><form method="post" action="/login"><label>E-mail <input type="email" name="email" autocomplete="username" required></label><label>Hasło <input type="password" name="password" autocomplete="current-password" required></label><button type="submit">Zaloguj</button></form></main></body></html>`))
+}
+
+func (a *app) login(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	u, err := a.auth.authenticate(r.Context(), r.FormValue("email"), r.FormValue("password"))
+	if err != nil {
+		http.Error(w, "invalid email or password", http.StatusUnauthorized)
+		return
+	}
+	token, expires, err := a.auth.createSession(r.Context(), u.ID)
+	if err != nil {
+		http.Error(w, "create session", http.StatusInternalServerError)
+		return
+	}
+	http.SetCookie(w, a.auth.cookie(token, expires))
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func (a *app) logout(w http.ResponseWriter, r *http.Request) {
+	if cookie, err := r.Cookie(sessionCookieName); err == nil {
+		if err := a.auth.revoke(r.Context(), cookie.Value); err != nil {
+			http.Error(w, "revoke session", http.StatusInternalServerError)
+			return
+		}
+	}
+	http.SetCookie(w, a.auth.cookie("", time.Unix(1, 0)))
+	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
 func (a *app) costs(w http.ResponseWriter, r *http.Request) {
