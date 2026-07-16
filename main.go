@@ -28,7 +28,11 @@ func main() {
 	}
 	defer db.Close()
 
-	server := &http.Server{Addr: addr, Handler: newApp(newProductStore(db))}
+	allegroConfig, err := allegroConfigFromEnv()
+	if err != nil {
+		log.Fatalf("initialize Allegro integration: %v", err)
+	}
+	server := &http.Server{Addr: addr, Handler: newApp(newProductStore(db), newAllegroService(db, allegroConfig, nil))}
 	log.Printf("product app listening on %s", addr)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
