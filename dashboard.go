@@ -79,6 +79,23 @@ func parseDashboardRange(r *http.Request, now time.Time) (dashboardRange, string
 }
 
 func (a *app) dashboard(w http.ResponseWriter, r *http.Request) {
+	if a.enforceOnboarding {
+		progress, progressErr := a.loadOnboardingProgress(r.Context(), requestUserID(r))
+		if progressErr != nil {
+			http.Error(w, "load onboarding progress", http.StatusInternalServerError)
+			return
+		}
+		if !progress.complete() {
+			if r.URL.Query().Get("onboarding") != "1" || !progress.readyForReport() {
+				http.Redirect(w, r, "/onboarding", http.StatusSeeOther)
+				return
+			}
+			if _, err := a.products.db.ExecContext(r.Context(), `INSERT OR IGNORE INTO onboarding_report_views(user_id) VALUES(?)`, requestUserID(r)); err != nil {
+				http.Error(w, "save onboarding progress", http.StatusInternalServerError)
+				return
+			}
+		}
+	}
 	rng, sortBy, err := parseDashboardRange(r, time.Now())
 	if err != nil {
 		w.WriteHeader(http.StatusUnprocessableEntity)
