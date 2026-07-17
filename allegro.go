@@ -34,27 +34,51 @@ type allegroConfig struct {
 	EncryptionKey                       []byte
 }
 
+type allegroEndpoints struct {
+	AuthorizeURL string
+	TokenURL     string
+	APIURL       string
+}
+
+func allegroEnvironment(environment string) (string, allegroEndpoints, error) {
+	switch environment {
+	case "", "sandbox":
+		return "SANDBOX", allegroEndpoints{
+			AuthorizeURL: "https://allegro.pl.allegrosandbox.pl/auth/oauth/authorize",
+			TokenURL:     "https://allegro.pl.allegrosandbox.pl/auth/oauth/token",
+			APIURL:       "https://api.allegro.pl.allegrosandbox.pl",
+		}, nil
+	case "production":
+		return "PRODUCTION", allegroEndpoints{
+			AuthorizeURL: "https://allegro.pl/auth/oauth/authorize",
+			TokenURL:     "https://allegro.pl/auth/oauth/token",
+			APIURL:       "https://api.allegro.pl",
+		}, nil
+	default:
+		return "", allegroEndpoints{}, fmt.Errorf("ALLEGRO_ENVIRONMENT must be production or sandbox, got %q", environment)
+	}
+}
+
 func allegroConfigFromEnv() (allegroConfig, error) {
+	prefix, endpoints, err := allegroEnvironment(strings.ToLower(strings.TrimSpace(os.Getenv("ALLEGRO_ENVIRONMENT"))))
+	if err != nil {
+		return allegroConfig{}, err
+	}
+	variable := func(suffix string) string { return "ALLEGRO_" + prefix + "_" + suffix }
 	c := allegroConfig{
-		ClientID: os.Getenv("ALLEGRO_CLIENT_ID"), ClientSecret: os.Getenv("ALLEGRO_CLIENT_SECRET"),
-		RedirectURL: os.Getenv("ALLEGRO_REDIRECT_URL"), AuthorizeURL: os.Getenv("ALLEGRO_AUTHORIZE_URL"),
-		TokenURL: os.Getenv("ALLEGRO_TOKEN_URL"), APIURL: os.Getenv("ALLEGRO_API_URL"),
-	}
-	if c.AuthorizeURL == "" {
-		c.AuthorizeURL = "https://allegro.pl/auth/oauth/authorize"
-	}
-	if c.TokenURL == "" {
-		c.TokenURL = "https://allegro.pl/auth/oauth/token"
-	}
-	if c.APIURL == "" {
-		c.APIURL = "https://api.allegro.pl"
+		ClientID:     os.Getenv(variable("CLIENT_ID")),
+		ClientSecret: os.Getenv(variable("CLIENT_SECRET")),
+		RedirectURL:  os.Getenv(variable("REDIRECT_URL")),
+		AuthorizeURL: endpoints.AuthorizeURL,
+		TokenURL:     endpoints.TokenURL,
+		APIURL:       endpoints.APIURL,
 	}
 	keyText := os.Getenv("ALLEGRO_TOKEN_ENCRYPTION_KEY")
 	if c.ClientID == "" && c.ClientSecret == "" && c.RedirectURL == "" && keyText == "" {
 		return c, nil
 	}
 	if c.ClientID == "" || c.ClientSecret == "" || c.RedirectURL == "" || keyText == "" {
-		return c, errors.New("ALLEGRO_CLIENT_ID, ALLEGRO_CLIENT_SECRET, ALLEGRO_REDIRECT_URL and ALLEGRO_TOKEN_ENCRYPTION_KEY must be set together")
+		return c, fmt.Errorf("%s, %s, %s and ALLEGRO_TOKEN_ENCRYPTION_KEY must be set together", variable("CLIENT_ID"), variable("CLIENT_SECRET"), variable("REDIRECT_URL"))
 	}
 	key, err := base64.StdEncoding.DecodeString(keyText)
 	if err != nil || len(key) != 32 {

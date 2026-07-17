@@ -17,14 +17,16 @@ Open <http://localhost:8080>. The service health endpoint is `GET /health`.
 ## Allegro OAuth
 
 Copy the variable names from `.env.example` into your local secret-management
-mechanism. The integration is enabled only when `ALLEGRO_CLIENT_ID`,
-`ALLEGRO_CLIENT_SECRET`, `ALLEGRO_REDIRECT_URL`, and a base64-encoded random
-32-byte `ALLEGRO_TOKEN_ENCRYPTION_KEY` are all present. Real values must never be
-committed. Optional endpoint variables allow the same build to use Allegro's
-sandbox.
+mechanism. `ALLEGRO_ENVIRONMENT=production|sandbox` selects the OAuth host, API
+host, redirect URI, and matching credential set together. It defaults to
+`sandbox`; any other value stops application startup with an error. The selected
+environment is enabled only when its `ALLEGRO_<ENV>_CLIENT_ID`,
+`ALLEGRO_<ENV>_CLIENT_SECRET`, `ALLEGRO_<ENV>_REDIRECT_URL`, and a base64-encoded
+random 32-byte `ALLEGRO_TOKEN_ENCRYPTION_KEY` are all present. Keep Production
+and Sandbox OAuth credentials separate and never commit real values.
 
-Register the configured `ALLEGRO_REDIRECT_URL` exactly in the Allegro developer
-application. The local default callback is
+Register the selected environment's `ALLEGRO_<ENV>_REDIRECT_URL` exactly in the
+corresponding Allegro developer application. The local Sandbox callback is
 `http://localhost:8080/oauth/allegro/callback`.
 
 After connecting an account, offers, orders with their line items, and billing

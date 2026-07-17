@@ -141,11 +141,59 @@ func TestAllegroAPIRetries401AndReturnsAPIErrors(t *testing.T) {
 }
 
 func TestAllegroConfigurationValidation(t *testing.T) {
-	t.Setenv("ALLEGRO_CLIENT_ID", "only-one")
-	t.Setenv("ALLEGRO_CLIENT_SECRET", "")
-	t.Setenv("ALLEGRO_REDIRECT_URL", "")
+	t.Setenv("ALLEGRO_ENVIRONMENT", "sandbox")
+	t.Setenv("ALLEGRO_SANDBOX_CLIENT_ID", "only-one")
+	t.Setenv("ALLEGRO_SANDBOX_CLIENT_SECRET", "")
+	t.Setenv("ALLEGRO_SANDBOX_REDIRECT_URL", "")
 	t.Setenv("ALLEGRO_TOKEN_ENCRYPTION_KEY", "")
-	if _, err := allegroConfigFromEnv(); err == nil {
+	if _, err := allegroConfigFromEnv(); err == nil || !strings.Contains(err.Error(), "ALLEGRO_SANDBOX_CLIENT_SECRET") {
 		t.Fatal("incomplete configuration accepted")
+	}
+}
+
+func TestAllegroEnvironmentSelectsAllEndpointsAndCredentials(t *testing.T) {
+	t.Setenv("ALLEGRO_TOKEN_ENCRYPTION_KEY", base64.StdEncoding.EncodeToString([]byte("01234567890123456789012345678901")))
+	t.Setenv("ALLEGRO_PRODUCTION_CLIENT_ID", "production-client")
+	t.Setenv("ALLEGRO_PRODUCTION_CLIENT_SECRET", "production-secret")
+	t.Setenv("ALLEGRO_PRODUCTION_REDIRECT_URL", "https://app.example/oauth/allegro/production/callback")
+	t.Setenv("ALLEGRO_SANDBOX_CLIENT_ID", "sandbox-client")
+	t.Setenv("ALLEGRO_SANDBOX_CLIENT_SECRET", "sandbox-secret")
+	t.Setenv("ALLEGRO_SANDBOX_REDIRECT_URL", "http://localhost:8080/oauth/allegro/callback")
+
+	tests := []struct {
+		environment, clientID, authorizeURL, tokenURL, apiURL, redirectURL string
+	}{
+		{"production", "production-client", "https://allegro.pl/auth/oauth/authorize", "https://allegro.pl/auth/oauth/token", "https://api.allegro.pl", "https://app.example/oauth/allegro/production/callback"},
+		{"sandbox", "sandbox-client", "https://allegro.pl.allegrosandbox.pl/auth/oauth/authorize", "https://allegro.pl.allegrosandbox.pl/auth/oauth/token", "https://api.allegro.pl.allegrosandbox.pl", "http://localhost:8080/oauth/allegro/callback"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.environment, func(t *testing.T) {
+			t.Setenv("ALLEGRO_ENVIRONMENT", tt.environment)
+			config, err := allegroConfigFromEnv()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if config.ClientID != tt.clientID || config.AuthorizeURL != tt.authorizeURL || config.TokenURL != tt.tokenURL || config.APIURL != tt.apiURL || config.RedirectURL != tt.redirectURL {
+				t.Fatalf("configuration = %+v", config)
+			}
+		})
+	}
+}
+
+func TestAllegroEnvironmentDefaultsToSandbox(t *testing.T) {
+	t.Setenv("ALLEGRO_ENVIRONMENT", "")
+	config, err := allegroConfigFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.APIURL != "https://api.allegro.pl.allegrosandbox.pl" || !strings.Contains(config.AuthorizeURL, "allegrosandbox.pl") || !strings.Contains(config.TokenURL, "allegrosandbox.pl") {
+		t.Fatalf("default configuration = %+v", config)
+	}
+}
+
+func TestAllegroEnvironmentRejectsUnsupportedValue(t *testing.T) {
+	t.Setenv("ALLEGRO_ENVIRONMENT", "staging")
+	if _, err := allegroConfigFromEnv(); err == nil || !strings.Contains(err.Error(), "ALLEGRO_ENVIRONMENT must be production or sandbox") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
