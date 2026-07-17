@@ -106,31 +106,31 @@ templ authPage(data authFormData) {
 					<input type="hidden" name="token" value={ data.Token }/>
 				}
 				if data.Mode != "reset-password" {
-				<label class="form-control w-full"><span class="label-text">Adres e-mail</span><input class="input input-bordered w-full" type="email" name="email" value={ data.Email } autocomplete="username" maxlength="254" aria-invalid={ data.Errors["email"] != "" } aria-describedby="email-error" required/>
+				<div class="flex w-full flex-col gap-2"><label class="label-text" for="email">Adres e-mail</label><input id="email" class="input input-bordered w-full" type="email" name="email" value={ data.Email } autocomplete="username" maxlength="254" aria-invalid={ data.Errors["email"] != "" } aria-describedby="email-error" required/>
 					if data.Errors["email"] != "" {
-						<span id="email-error" class="mt-1 min-h-5 text-sm text-error">{ data.Errors["email"] }</span>
+						<span id="email-error" class="min-h-5 text-sm text-error">{ data.Errors["email"] }</span>
 					} else {
-						<span id="email-error" class="mt-1 min-h-5 text-sm" aria-hidden="true"></span>
+						<span id="email-error" class="min-h-5 text-sm" aria-hidden="true"></span>
 					}
-				</label>
+				</div>
 				}
 				if data.Mode != "forgot-password" {
-				<label class="form-control w-full"><span class="label-text">Hasło</span><input class="input input-bordered w-full" type="password" name="password" autocomplete={ passwordAutocomplete(data.Mode) } minlength={ passwordMinLength(data.Mode) } maxlength="72" aria-invalid={ data.Errors["password"] != "" } aria-describedby="password-error" required/>
+				<div class="flex w-full flex-col gap-2"><label class="label-text" for="password">Hasło</label><input id="password" class="input input-bordered w-full" type="password" name="password" autocomplete={ passwordAutocomplete(data.Mode) } minlength={ passwordMinLength(data.Mode) } maxlength="72" aria-invalid={ data.Errors["password"] != "" } aria-describedby="password-error" required/>
 					if data.Errors["password"] != "" {
-						<span id="password-error" class="mt-1 min-h-5 text-sm text-error">{ data.Errors["password"] }</span>
+						<span id="password-error" class="min-h-5 text-sm text-error">{ data.Errors["password"] }</span>
 					} else {
-						<span id="password-error" class="mt-1 min-h-5 text-sm" aria-hidden="true"></span>
+						<span id="password-error" class="min-h-5 text-sm" aria-hidden="true"></span>
 					}
-				</label>
+				</div>
 				}
 				if data.Mode == "register" || data.Mode == "reset-password" {
-					<label class="form-control w-full"><span class="label-text">Powtórz hasło</span><input class="input input-bordered w-full" type="password" name="password_confirmation" autocomplete="new-password" minlength="12" maxlength="72" aria-invalid={ data.Errors["confirmation"] != "" } aria-describedby="confirmation-error" required/>
+					<div class="flex w-full flex-col gap-2"><label class="label-text" for="password-confirmation">Powtórz hasło</label><input id="password-confirmation" class="input input-bordered w-full" type="password" name="password_confirmation" autocomplete="new-password" minlength="12" maxlength="72" aria-invalid={ data.Errors["confirmation"] != "" } aria-describedby="confirmation-error" required/>
 						if data.Errors["confirmation"] != "" {
-							<span id="confirmation-error" class="mt-1 min-h-5 text-sm text-error">{ data.Errors["confirmation"] }</span>
+							<span id="confirmation-error" class="min-h-5 text-sm text-error">{ data.Errors["confirmation"] }</span>
 						} else {
-							<span id="confirmation-error" class="mt-1 min-h-5 text-sm" aria-hidden="true"></span>
+							<span id="confirmation-error" class="min-h-5 text-sm" aria-hidden="true"></span>
 						}
-					</label>
+					</div>
 				}
 				<button class="btn btn-primary w-full" type="submit"><span class="submit-label">{ authButton(data.Mode) }</span><span class="submit-loading items-center gap-2"><span class="loading loading-spinner loading-sm" aria-hidden="true"></span>Przetwarzanie…</span></button>
 			</form>
