@@ -306,7 +306,7 @@ func TestLandingIsPublicAndCTAsAreFunctional(t *testing.T) {
 	}
 }
 
-func TestRegistrationValidationDuplicateAndSession(t *testing.T) {
+func TestRegistrationValidationDuplicateAndSuccessRedirect(t *testing.T) {
 	db, err := openDatabase(":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -323,13 +323,35 @@ func TestRegistrationValidationDuplicateAndSession(t *testing.T) {
 
 	valid := url.Values{"email": {"new@example.com"}, "password": {"StrongPassword1"}, "password_confirmation": {"StrongPassword1"}}
 	response = postForm(handler, "/register", valid)
-	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/onboarding" || len(response.Result().Cookies()) != 1 {
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/login?registered=1" || len(response.Result().Cookies()) != 0 {
 		t.Fatalf("registration = %d %q %#v", response.Code, response.Header().Get("Location"), response.Result().Cookies())
+	}
+	success := httptest.NewRecorder()
+	handler.ServeHTTP(success, httptest.NewRequest(http.MethodGet, response.Header().Get("Location"), nil))
+	if success.Code != http.StatusOK || !strings.Contains(success.Body.String(), "Konto zostało utworzone") {
+		t.Fatalf("registration success page = %d %q", success.Code, success.Body.String())
 	}
 
 	response = postForm(handler, "/register", valid)
 	if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), "Nie można utworzyć konta") || strings.Contains(response.Body.String(), "UNIQUE") {
 		t.Fatalf("duplicate registration = %d %q", response.Code, response.Body.String())
+	}
+}
+
+func TestAuthFormsExposeStableLayoutValidationAndLoadingState(t *testing.T) {
+	db, err := openDatabase(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	handler := newAuthenticatedApp(newProductStore(db), nil, newAuthService(db, time.Hour, false))
+
+	response := postForm(handler, "/register", url.Values{"email": {"bad"}, "password": {"short"}, "password_confirmation": {"different"}})
+	body := response.Body.String()
+	for _, want := range []string{`class="input input-bordered w-full"`, `class="mt-1 min-h-5 text-sm text-error"`, `aria-invalid="true"`, `hx-disabled-elt="button"`, `class="submit-loading items-center gap-2"`, "Przetwarzanie…"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("auth form does not contain %q", want)
+		}
 	}
 }
 
