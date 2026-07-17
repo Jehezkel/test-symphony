@@ -766,14 +766,14 @@ func authPage(data authFormData) templ.Component {
 				}
 			}
 			if data.Mode != "reset-password" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "<label class=\"form-control w-full\"><span class=\"label-text\">Adres e-mail</span><input class=\"input input-bordered w-full\" type=\"email\" name=\"email\" value=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "<div class=\"flex w-full flex-col gap-2\"><label class=\"label-text\" for=\"email\">Adres e-mail</label><input id=\"email\" class=\"input input-bordered w-full\" type=\"email\" name=\"email\" value=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var37 string
 				templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.ResolveAttributeValue(data.Email)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views.templ`, Line: 109, Col: 170}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views.templ`, Line: 109, Col: 200}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var37)
 				if templ_7745c5c3_Err != nil {
@@ -786,7 +786,7 @@ func authPage(data authFormData) templ.Component {
 				var templ_7745c5c3_Var38 string
 				templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.ResolveAttributeValue(data.Errors["email"] != "")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views.templ`, Line: 109, Col: 254}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views.templ`, Line: 109, Col: 284}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var38)
 				if templ_7745c5c3_Err != nil {
@@ -797,14 +797,14 @@ func authPage(data authFormData) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				if data.Errors["email"] != "" {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "<span id=\"email-error\" class=\"mt-1 min-h-5 text-sm text-error\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "<span id=\"email-error\" class=\"min-h-5 text-sm text-error\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var39 string
 					templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(data.Errors["email"])
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views.templ`, Line: 111, Col: 91}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views.templ`, Line: 111, Col: 86}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 					if templ_7745c5c3_Err != nil {
@@ -815,25 +815,25 @@ func authPage(data authFormData) templ.Component {
 						return templ_7745c5c3_Err
 					}
 				} else {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, "<span id=\"email-error\" class=\"mt-1 min-h-5 text-sm\" aria-hidden=\"true\"></span>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, "<span id=\"email-error\" class=\"min-h-5 text-sm\" aria-hidden=\"true\"></span>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, "</label> ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, "</div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
 			if data.Mode != "forgot-password" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "<label class=\"form-control w-full\"><span class=\"label-text\">Hasło</span><input class=\"input input-bordered w-full\" type=\"password\" name=\"password\" autocomplete=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "<div class=\"flex w-full flex-col gap-2\"><label class=\"label-text\" for=\"password\">Hasło</label><input id=\"password\" class=\"input input-bordered w-full\" type=\"password\" name=\"password\" autocomplete=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var40 string
 				templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.ResolveAttributeValue(passwordAutocomplete(data.Mode))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views.templ`, Line: 118, Col: 198}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views.templ`, Line: 118, Col: 234}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var40)
 				if templ_7745c5c3_Err != nil {
@@ -846,7 +846,7 @@ func authPage(data authFormData) templ.Component {
 				var templ_7745c5c3_Var41 string
 				templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.ResolveAttributeValue(passwordMinLength(data.Mode))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views.templ`, Line: 118, Col: 241}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views.templ`, Line: 118, Col: 277}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var41)
 				if templ_7745c5c3_Err != nil {
@@ -859,7 +859,7 @@ func authPage(data authFormData) templ.Component {
 				var templ_7745c5c3_Var42 string
 				templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.ResolveAttributeValue(data.Errors["password"] != "")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views.templ`, Line: 118, Col: 303}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views.templ`, Line: 118, Col: 339}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var42)
 				if templ_7745c5c3_Err != nil {
@@ -870,14 +870,14 @@ func authPage(data authFormData) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				if data.Errors["password"] != "" {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 75, "<span id=\"password-error\" class=\"mt-1 min-h-5 text-sm text-error\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 75, "<span id=\"password-error\" class=\"min-h-5 text-sm text-error\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var43 string
 					templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(data.Errors["password"])
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views.templ`, Line: 120, Col: 97}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views.templ`, Line: 120, Col: 92}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
 					if templ_7745c5c3_Err != nil {
@@ -888,25 +888,25 @@ func authPage(data authFormData) templ.Component {
 						return templ_7745c5c3_Err
 					}
 				} else {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "<span id=\"password-error\" class=\"mt-1 min-h-5 text-sm\" aria-hidden=\"true\"></span>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "<span id=\"password-error\" class=\"min-h-5 text-sm\" aria-hidden=\"true\"></span>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "</label> ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "</div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
 			if data.Mode == "register" || data.Mode == "reset-password" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 79, "<label class=\"form-control w-full\"><span class=\"label-text\">Powtórz hasło</span><input class=\"input input-bordered w-full\" type=\"password\" name=\"password_confirmation\" autocomplete=\"new-password\" minlength=\"12\" maxlength=\"72\" aria-invalid=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 79, "<div class=\"flex w-full flex-col gap-2\"><label class=\"label-text\" for=\"password-confirmation\">Powtórz hasło</label><input id=\"password-confirmation\" class=\"input input-bordered w-full\" type=\"password\" name=\"password_confirmation\" autocomplete=\"new-password\" minlength=\"12\" maxlength=\"72\" aria-invalid=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var44 string
 				templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.ResolveAttributeValue(data.Errors["confirmation"] != "")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views.templ`, Line: 127, Col: 281}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `views.templ`, Line: 127, Col: 343}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var44)
 				if templ_7745c5c3_Err != nil {
@@ -917,14 +917,14 @@ func authPage(data authFormData) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				if data.Errors["confirmation"] != "" {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 81, "<span id=\"confirmation-error\" class=\"mt-1 min-h-5 text-sm text-error\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 81, "<span id=\"confirmation-error\" class=\"min-h-5 text-sm text-error\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var45 string
 					templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs(data.Errors["confirmation"])
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views.templ`, Line: 129, Col: 106}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `views.templ`, Line: 129, Col: 101}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
 					if templ_7745c5c3_Err != nil {
@@ -935,12 +935,12 @@ func authPage(data authFormData) templ.Component {
 						return templ_7745c5c3_Err
 					}
 				} else {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 83, "<span id=\"confirmation-error\" class=\"mt-1 min-h-5 text-sm\" aria-hidden=\"true\"></span>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 83, "<span id=\"confirmation-error\" class=\"min-h-5 text-sm\" aria-hidden=\"true\"></span>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 84, "</label> ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 84, "</div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

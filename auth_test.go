@@ -348,10 +348,28 @@ func TestAuthFormsExposeStableLayoutValidationAndLoadingState(t *testing.T) {
 
 	response := postForm(handler, "/register", url.Values{"email": {"bad"}, "password": {"short"}, "password_confirmation": {"different"}})
 	body := response.Body.String()
-	for _, want := range []string{`class="input input-bordered w-full"`, `class="mt-1 min-h-5 text-sm text-error"`, `aria-invalid="true"`, `hx-disabled-elt="button"`, `class="submit-loading items-center gap-2"`, "Przetwarzanie…"} {
+	for _, want := range []string{`class="flex w-full flex-col gap-2"`, `class="input input-bordered w-full"`, `class="min-h-5 text-sm text-error"`, `aria-invalid="true"`, `hx-disabled-elt="button"`, `class="btn btn-primary w-full"`, `class="submit-loading items-center gap-2"`, "Przetwarzanie…"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("auth form does not contain %q", want)
 		}
+	}
+	for _, want := range []string{`<label class="label-text" for="email">`, `id="email"`, `<label class="label-text" for="password">`, `id="password"`, `<label class="label-text" for="password-confirmation">`, `id="password-confirmation"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("registration form does not contain %q", want)
+		}
+	}
+	if fields := strings.Count(body, `class="flex w-full flex-col gap-2"`); fields != 3 {
+		t.Errorf("registration field containers = %d, want 3", fields)
+	}
+
+	login := httptest.NewRecorder()
+	handler.ServeHTTP(login, httptest.NewRequest(http.MethodGet, "/login", nil))
+	loginBody := login.Body.String()
+	if fields := strings.Count(loginBody, `class="flex w-full flex-col gap-2"`); fields != 2 {
+		t.Errorf("login field containers = %d, want 2", fields)
+	}
+	if inputs := strings.Count(loginBody, `class="input input-bordered w-full"`); inputs != 2 {
+		t.Errorf("login full-width inputs = %d, want 2", inputs)
 	}
 }
 
