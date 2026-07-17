@@ -25,6 +25,7 @@ var errInvalidCredentials = errors.New("invalid credentials")
 var errEmailUnavailable = errors.New("email unavailable")
 var errInvalidAuthToken = errors.New("invalid authentication token")
 var errAuthRateLimited = errors.New("authentication message rate limited")
+var errAccountNotFound = errors.New("account not found")
 
 var passwordDigit = regexp.MustCompile(`[0-9]`)
 
@@ -323,6 +324,67 @@ func (s *authService) revoke(ctx context.Context, token string) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE user_sessions SET revoked_at=? WHERE token_hash=? AND revoked_at IS NULL`, s.now().UTC().Format(time.RFC3339Nano), hash[:])
 	if err != nil {
 		return fmt.Errorf("revoke session: %w", err)
+	}
+	return nil
+}
+
+func (s *authService) changePassword(ctx context.Context, userID int64, current, password string) error {
+	var encoded string
+	if err := s.db.QueryRowContext(ctx, `SELECT password_hash FROM users WHERE id=?`, userID).Scan(&encoded); errors.Is(err, sql.ErrNoRows) {
+		return errAccountNotFound
+	} else if err != nil {
+		return fmt.Errorf("load password: %w", err)
+	}
+	if bcrypt.CompareHashAndPassword([]byte(encoded), []byte(current)) != nil {
+		return errInvalidCredentials
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hash new password: %w", err)
+	}
+	_, err = s.db.ExecContext(ctx, `UPDATE users SET password_hash=?,updated_at=? WHERE id=?`, string(hash), s.now().UTC().Format(time.RFC3339Nano), userID)
+	if err != nil {
+		return fmt.Errorf("update password: %w", err)
+	}
+	return nil
+}
+
+func (s *authService) revokeOtherSessions(ctx context.Context, userID int64, currentToken string) error {
+	hash := sha256.Sum256([]byte(currentToken))
+	_, err := s.db.ExecContext(ctx, `UPDATE user_sessions SET revoked_at=? WHERE user_id=? AND token_hash<>? AND revoked_at IS NULL`, s.now().UTC().Format(time.RFC3339Nano), userID, hash[:])
+	if err != nil {
+		return fmt.Errorf("revoke other sessions: %w", err)
+	}
+	return nil
+}
+
+// deleteAccount removes the user and every dependent record in one transaction.
+// Foreign keys are enabled by openDatabase and all user-owned data ultimately
+// references users with ON DELETE CASCADE, including integrations and sync jobs.
+func (s *authService) deleteAccount(ctx context.Context, userID int64, password string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin account deletion: %w", err)
+	}
+	defer tx.Rollback()
+	var encoded string
+	if err := tx.QueryRowContext(ctx, `SELECT password_hash FROM users WHERE id=?`, userID).Scan(&encoded); errors.Is(err, sql.ErrNoRows) {
+		return errAccountNotFound
+	} else if err != nil {
+		return fmt.Errorf("load account password: %w", err)
+	}
+	if bcrypt.CompareHashAndPassword([]byte(encoded), []byte(password)) != nil {
+		return errInvalidCredentials
+	}
+	result, err := tx.ExecContext(ctx, `DELETE FROM users WHERE id=?`, userID)
+	if err != nil {
+		return fmt.Errorf("delete account: %w", err)
+	}
+	if rows, err := result.RowsAffected(); err != nil || rows != 1 {
+		return errAccountNotFound
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit account deletion: %w", err)
 	}
 	return nil
 }

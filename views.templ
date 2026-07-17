@@ -36,7 +36,54 @@ templ landingStep(number, title, description string) { <li class="rounded-2xl bg
 templ landingFAQ(question, answer string) { <details class="collapse collapse-arrow border border-base-300 bg-base-100"><summary class="collapse-title text-lg font-medium">{ question }</summary><div class="collapse-content text-base-content/70"><p>{ answer }</p></div></details> }
 
 templ logoutForm() {
-	<div class="flex flex-wrap gap-2"><form method="post" action="/verify-email/resend"><input type="hidden" name="csrf_token" value={ currentCSRF(ctx) }/><button class="btn btn-ghost btn-sm" type="submit">Wyślij ponownie weryfikację</button></form><form method="post" action="/logout"><input type="hidden" name="csrf_token" value={ currentCSRF(ctx) }/><button class="btn btn-ghost btn-sm" type="submit">Wyloguj się</button></form></div>
+	<div class="flex flex-wrap gap-2"><a class="btn btn-ghost btn-sm" href="/account">Ustawienia konta</a><form method="post" action="/verify-email/resend"><input type="hidden" name="csrf_token" value={ currentCSRF(ctx) }/><button class="btn btn-ghost btn-sm" type="submit">Wyślij ponownie weryfikację</button></form><form method="post" action="/logout"><input type="hidden" name="csrf_token" value={ currentCSRF(ctx) }/><button class="btn btn-ghost btn-sm" type="submit">Wyloguj się</button></form></div>
+}
+
+templ accountPage(data accountData) {
+	<!doctype html>
+	<html lang="pl" data-theme="corporate">
+		<head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Ustawienia konta</title><link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css"/><script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script></head>
+		<body class="min-h-screen bg-base-200"><main class="mx-auto max-w-3xl p-6 lg:p-10"><div class="flex justify-between gap-3"><a class="link" href="/dashboard">← Panel</a>@logoutForm()</div><h1 class="mt-5 text-3xl font-bold">Ustawienia konta</h1>
+			if data.Success != "" {
+				<div class="alert alert-success mt-5" role="status">{ data.Success }</div>
+			}
+			<section class="card mt-5 bg-base-100 shadow"><div class="card-body"><h2 class="card-title">Informacje</h2><p><strong>E-mail:</strong> { data.Email }</p><p><strong>Weryfikacja:</strong>
+				if data.EmailVerified {
+					<span class="badge badge-success">Potwierdzony</span>
+				} else {
+					<span class="badge badge-warning">Niepotwierdzony</span>
+				}
+			</p><p><strong>Allegro:</strong>
+				if data.AllegroConnected {
+					<span class="badge badge-success">Połączono</span>
+				} else {
+					<span class="badge badge-ghost">Niepołączono</span>
+				}
+			</p></div></section>
+			<section class="card mt-5 bg-base-100 shadow"><form class="card-body" method="post" action="/account/password"><h2 class="card-title">Zmień hasło</h2><input type="hidden" name="csrf_token" value={ currentCSRF(ctx) }/><label class="form-control"><span>Aktualne hasło</span><input class="input input-bordered" type="password" name="current_password" autocomplete="current-password" required/>
+				if data.PasswordErrors["current_password"] != "" {
+					<span class="text-sm text-error">{ data.PasswordErrors["current_password"] }</span>
+				}
+			</label><label class="form-control"><span>Nowe hasło</span><input class="input input-bordered" type="password" name="password" autocomplete="new-password" minlength="12" maxlength="72" required/>
+				if data.PasswordErrors["password"] != "" {
+					<span class="text-sm text-error">{ data.PasswordErrors["password"] }</span>
+				}
+			</label><label class="form-control"><span>Powtórz nowe hasło</span><input class="input input-bordered" type="password" name="password_confirmation" autocomplete="new-password" minlength="12" maxlength="72" required/>
+				if data.PasswordErrors["confirmation"] != "" {
+					<span class="text-sm text-error">{ data.PasswordErrors["confirmation"] }</span>
+				}
+			</label><button class="btn btn-primary" type="submit">Zmień hasło</button></form></section>
+			<section class="card mt-5 bg-base-100 shadow"><div class="card-body"><h2 class="card-title">Aktywne sesje</h2><p class="text-base-content/70">Wyloguj wszystkie urządzenia poza tym, którego teraz używasz.</p><form method="post" action="/account/sessions/revoke"><input type="hidden" name="csrf_token" value={ currentCSRF(ctx) }/><button class="btn btn-outline" type="submit">Wyloguj pozostałe sesje</button></form></div></section>
+			if data.AllegroConnected {
+				<section class="card mt-5 bg-base-100 shadow"><div class="card-body"><h2 class="card-title">Połączenie Allegro</h2><p class="text-base-content/70">Rozłączenie usuwa zapisane tokeny i zatrzymuje dalszą synchronizację.</p><form method="post" action="/integration/allegro/disconnect"><input type="hidden" name="csrf_token" value={ currentCSRF(ctx) }/><button class="btn btn-error btn-outline" type="submit">Rozłącz Allegro</button></form></div></section>
+			}
+			<section class="card mt-5 border border-error bg-base-100 shadow"><form class="card-body" method="post" action="/account/delete"><h2 class="card-title text-error">Usuń konto</h2><p>Ta operacja trwale usuwa konto, sesje, tokeny, integrację Allegro, dane sprzedaży i zadania synchronizacji.</p><input type="hidden" name="csrf_token" value={ currentCSRF(ctx) }/>
+				if data.DeletionError != "" {
+					<div class="alert alert-error" role="alert">{ data.DeletionError }</div>
+				}
+			<label class="form-control"><span>Hasło</span><input class="input input-bordered" type="password" name="password" autocomplete="current-password" required/></label><label class="form-control"><span>Wpisz dokładnie: <strong>{ deleteAccountConfirmation }</strong></span><input class="input input-bordered" name="confirmation" autocomplete="off" required/></label><button class="btn btn-error" type="submit">Usuń konto i wszystkie dane</button></form></section>
+		</main></body>
+	</html>
 }
 
 templ authPage(data authFormData) {
@@ -246,7 +293,7 @@ templ allegroPage(status integrationStatus) {
 						<div class="alert alert-error">{ status.Sync.Error }</div>
 					}
 				}
-				<form method="post" action="/integration/allegro/disconnect"><button class="btn btn-error btn-outline" type="submit">Rozłącz konto</button></form>
+				<form method="post" action="/integration/allegro/disconnect"><input type="hidden" name="csrf_token" value={ currentCSRF(ctx) }/><button class="btn btn-error btn-outline" type="submit">Rozłącz konto</button></form>
 			} else {
 				<div class="badge badge-ghost badge-lg mt-4">Niepołączono</div>
 				<p>Połącz konto, aby aplikacja mogła odczytywać oferty, zamówienia i opłaty.</p>
