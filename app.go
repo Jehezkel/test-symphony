@@ -24,11 +24,20 @@ type authFormData struct {
 	Next         string
 	GeneralError string
 	Errors       map[string]string
+	Token        string
+	Success      string
 }
 
 func authTitle(mode string) string {
-	if mode == "register" {
+	switch mode {
+	case "register":
 		return "Rejestracja"
+	case "forgot-password":
+		return "Reset hasła"
+	case "reset-password":
+		return "Ustaw nowe hasło"
+	case "verify-email":
+		return "Weryfikacja e-mail"
 	}
 	return "Logowanie"
 }
@@ -36,6 +45,12 @@ func authTitle(mode string) string {
 func authButton(mode string) string {
 	if mode == "register" {
 		return "Utwórz konto"
+	}
+	if mode == "forgot-password" {
+		return "Wyślij link"
+	}
+	if mode == "reset-password" {
+		return "Zmień hasło"
 	}
 	return "Zaloguj się"
 }
@@ -105,11 +120,17 @@ func newAuthenticatedApp(products *productStore, allegro *allegroService, auth *
 	public.HandleFunc("POST /login", a.login)
 	public.HandleFunc("GET /register", a.registerPage)
 	public.HandleFunc("POST /register", a.register)
+	public.HandleFunc("GET /forgot-password", a.forgotPasswordPage)
+	public.HandleFunc("POST /forgot-password", a.forgotPassword)
+	public.HandleFunc("GET /reset-password", a.resetPasswordPage)
+	public.HandleFunc("POST /reset-password", a.resetPassword)
+	public.HandleFunc("GET /verify-email", a.verifyEmail)
 
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /products", a.index)
 	protected.HandleFunc("GET /onboarding", a.onboarding)
 	protected.HandleFunc("POST /logout", a.logout)
+	protected.HandleFunc("POST /verify-email/resend", a.resendVerification)
 	protected.HandleFunc("POST /products", a.createProduct)
 	protected.HandleFunc("GET /products/{id}/edit", a.editProduct)
 	protected.HandleFunc("PUT /products/{id}", a.updateProduct)
@@ -229,6 +250,10 @@ func (a *app) register(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "create account", http.StatusInternalServerError)
 		return
 	}
+	if err := a.auth.sendVerification(r.Context(), u.ID); err != nil && !errors.Is(err, errAuthRateLimited) {
+		http.Error(w, "send verification", http.StatusInternalServerError)
+		return
+	}
 	token, expires, err := a.auth.createSession(r.Context(), u.ID)
 	if err != nil {
 		http.Error(w, "create session", http.StatusInternalServerError)
@@ -236,6 +261,81 @@ func (a *app) register(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, a.auth.cookie(token, expires))
 	http.Redirect(w, r, "/onboarding", http.StatusSeeOther)
+}
+
+func (a *app) forgotPasswordPage(w http.ResponseWriter, r *http.Request) {
+	a.renderAuth(w, r, authFormData{Mode: "forgot-password"}, http.StatusOK)
+}
+
+func (a *app) forgotPassword(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		a.renderAuth(w, r, authFormData{Mode: "forgot-password", GeneralError: "Nie udało się odczytać formularza."}, http.StatusBadRequest)
+		return
+	}
+	if err := a.auth.sendPasswordReset(r.Context(), r.FormValue("email")); err != nil && !errors.Is(err, errAuthRateLimited) {
+		http.Error(w, "request password reset", http.StatusInternalServerError)
+		return
+	}
+	a.renderAuth(w, r, authFormData{Mode: "forgot-password", Success: "Jeśli konto istnieje, wysłaliśmy wiadomość z dalszymi instrukcjami."}, http.StatusOK)
+}
+
+func (a *app) resetPasswordPage(w http.ResponseWriter, r *http.Request) {
+	a.renderAuth(w, r, authFormData{Mode: "reset-password", Token: r.URL.Query().Get("token")}, http.StatusOK)
+}
+
+func (a *app) resetPassword(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	data := authFormData{Mode: "reset-password", Token: r.FormValue("token")}
+	data.Errors = validateRegistration("reset@example.com", r.FormValue("password"), r.FormValue("password_confirmation"))
+	delete(data.Errors, "email")
+	if len(data.Errors) > 0 {
+		a.renderAuth(w, r, data, http.StatusUnprocessableEntity)
+		return
+	}
+	if err := a.auth.resetPassword(r.Context(), data.Token, r.FormValue("password")); errors.Is(err, errInvalidAuthToken) {
+		data.GeneralError = "Link jest nieprawidłowy, wygasł lub został już użyty."
+		a.renderAuth(w, r, data, http.StatusUnprocessableEntity)
+		return
+	} else if err != nil {
+		http.Error(w, "reset password", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/login", http.StatusSeeOther)
+}
+
+func (a *app) verifyEmail(w http.ResponseWriter, r *http.Request) {
+	data := authFormData{Mode: "verify-email"}
+	if err := a.auth.verifyEmail(r.Context(), r.URL.Query().Get("token")); errors.Is(err, errInvalidAuthToken) {
+		data.GeneralError = "Link jest nieprawidłowy, wygasł lub został już użyty."
+		a.renderAuth(w, r, data, http.StatusUnprocessableEntity)
+		return
+	} else if err != nil {
+		http.Error(w, "verify email", http.StatusInternalServerError)
+		return
+	}
+	data.Success = "Adres e-mail został potwierdzony."
+	a.renderAuth(w, r, data, http.StatusOK)
+}
+
+func (a *app) resendVerification(w http.ResponseWriter, r *http.Request) {
+	cookie, cookieErr := r.Cookie(sessionCookieName)
+	if cookieErr != nil || !validCSRF(cookie.Value, r.FormValue("csrf_token")) {
+		http.Error(w, "invalid CSRF token", http.StatusForbidden)
+		return
+	}
+	err := a.auth.sendVerification(r.Context(), requestUserID(r))
+	if errors.Is(err, errAuthRateLimited) {
+		http.Error(w, "Spróbuj ponownie za chwilę.", http.StatusTooManyRequests)
+		return
+	}
+	if err != nil {
+		http.Error(w, "resend verification", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 }
 
 func safeNext(raw string) string {

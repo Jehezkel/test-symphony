@@ -36,7 +36,7 @@ templ landingStep(number, title, description string) { <li class="rounded-2xl bg
 templ landingFAQ(question, answer string) { <details class="collapse collapse-arrow border border-base-300 bg-base-100"><summary class="collapse-title text-lg font-medium">{ question }</summary><div class="collapse-content text-base-content/70"><p>{ answer }</p></div></details> }
 
 templ logoutForm() {
-	<form method="post" action="/logout"><input type="hidden" name="csrf_token" value={ currentCSRF(ctx) }/><button class="btn btn-ghost btn-sm" type="submit">Wyloguj się</button></form>
+	<div class="flex flex-wrap gap-2"><form method="post" action="/verify-email/resend"><input type="hidden" name="csrf_token" value={ currentCSRF(ctx) }/><button class="btn btn-ghost btn-sm" type="submit">Wyślij ponownie weryfikację</button></form><form method="post" action="/logout"><input type="hidden" name="csrf_token" value={ currentCSRF(ctx) }/><button class="btn btn-ghost btn-sm" type="submit">Wyloguj się</button></form></div>
 }
 
 templ authPage(data authFormData) {
@@ -44,24 +44,35 @@ templ authPage(data authFormData) {
 	<html lang="pl" data-theme="corporate">
 		<head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>{ authTitle(data.Mode) }</title><link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css"/><script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script><script src="https://unpkg.com/htmx.org@2.0.6"></script></head>
 		<body class="min-h-screen bg-base-200"><main class="mx-auto flex min-h-screen max-w-md items-center p-5"><section id="auth-card" class="card w-full bg-base-100 shadow-xl"><div class="card-body"><h1 class="card-title text-3xl">{ authTitle(data.Mode) }</h1>
+			if data.Success != "" {
+				<div class="alert alert-success" role="status"><span>{ data.Success }</span></div>
+			}
 			if data.GeneralError != "" {
 				<div class="alert alert-error" role="alert"><span>{ data.GeneralError }</span></div>
 			}
+			if data.Mode != "verify-email" {
 			<form method="post" action={ "/" + data.Mode } hx-post={ "/" + data.Mode } hx-target="#auth-card" hx-swap="outerHTML" class="space-y-4">
 				if data.Next != "" {
 					<input type="hidden" name="next" value={ data.Next }/>
 				}
+				if data.Token != "" {
+					<input type="hidden" name="token" value={ data.Token }/>
+				}
+				if data.Mode != "reset-password" {
 				<label class="form-control"><span class="label-text">Adres e-mail</span><input class="input input-bordered" type="email" name="email" value={ data.Email } autocomplete="username" maxlength="254" required/>
 					if data.Errors["email"] != "" {
 						<span class="mt-1 text-sm text-error">{ data.Errors["email"] }</span>
 					}
 				</label>
+				}
+				if data.Mode != "forgot-password" {
 				<label class="form-control"><span class="label-text">Hasło</span><input class="input input-bordered" type="password" name="password" autocomplete={ passwordAutocomplete(data.Mode) } minlength={ passwordMinLength(data.Mode) } maxlength="72" required/>
 					if data.Errors["password"] != "" {
 						<span class="mt-1 text-sm text-error">{ data.Errors["password"] }</span>
 					}
 				</label>
-				if data.Mode == "register" {
+				}
+				if data.Mode == "register" || data.Mode == "reset-password" {
 					<label class="form-control"><span class="label-text">Powtórz hasło</span><input class="input input-bordered" type="password" name="password_confirmation" autocomplete="new-password" minlength="12" maxlength="72" required/>
 						if data.Errors["confirmation"] != "" {
 							<span class="mt-1 text-sm text-error">{ data.Errors["confirmation"] }</span>
@@ -70,10 +81,14 @@ templ authPage(data authFormData) {
 				}
 				<button class="btn btn-primary w-full" type="submit">{ authButton(data.Mode) }</button>
 			</form>
+			}
 			if data.Mode == "login" {
+				<p class="text-center text-sm"><a class="link" href="/forgot-password">Nie pamiętasz hasła?</a></p>
 				<p class="text-center text-sm">Nie masz konta? <a class="link link-primary" href="/register">Zarejestruj się</a></p>
-			} else {
+			} else if data.Mode == "register" {
 				<p class="text-center text-sm">Masz już konto? <a class="link link-primary" href="/login">Zaloguj się</a></p>
+			} else {
+				<p class="text-center text-sm"><a class="link link-primary" href="/login">Wróć do logowania</a></p>
 			}
 		</div></section></main></body>
 	</html>

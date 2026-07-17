@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/mail"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -22,6 +23,8 @@ const sessionCookieName = "goth_session"
 
 var errInvalidCredentials = errors.New("invalid credentials")
 var errEmailUnavailable = errors.New("email unavailable")
+var errInvalidAuthToken = errors.New("invalid authentication token")
+var errAuthRateLimited = errors.New("authentication message rate limited")
 
 var passwordDigit = regexp.MustCompile(`[0-9]`)
 
@@ -35,15 +38,19 @@ type userContextKey struct{}
 type csrfContextKey struct{}
 
 type authService struct {
-	db     *sql.DB
-	ttl    time.Duration
-	secure bool
-	now    func() time.Time
-	random func([]byte) (int, error)
+	db             *sql.DB
+	ttl            time.Duration
+	secure         bool
+	now            func() time.Time
+	random         func([]byte) (int, error)
+	mailer         emailSender
+	baseURL        string
+	tokenTTL       time.Duration
+	resendInterval time.Duration
 }
 
 func newAuthService(db *sql.DB, ttl time.Duration, secure bool) *authService {
-	return &authService{db: db, ttl: ttl, secure: secure, now: time.Now, random: rand.Read}
+	return &authService{db: db, ttl: ttl, secure: secure, now: time.Now, random: rand.Read, mailer: discardEmailSender{}, baseURL: "http://localhost:8080", tokenTTL: 30 * time.Minute, resendInterval: time.Minute}
 }
 
 func (s *authService) ensureUser(ctx context.Context, email, displayName, password string) error {
@@ -134,6 +141,136 @@ func (s *authService) register(ctx context.Context, email, password string) (use
 		return user{}, fmt.Errorf("read user id: %w", err)
 	}
 	return user{ID: id, Email: email, DisplayName: email}, nil
+}
+
+func (s *authService) sendPasswordReset(ctx context.Context, email string) error {
+	var u user
+	err := s.db.QueryRowContext(ctx, `SELECT id,email,display_name FROM users WHERE email=? AND password_hash IS NOT NULL`, strings.ToLower(strings.TrimSpace(email))).Scan(&u.ID, &u.Email, &u.DisplayName)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("load password reset user: %w", err)
+	}
+	return s.sendAuthToken(ctx, u, "password_reset", "/reset-password?token=", "Reset hasła")
+}
+
+func (s *authService) sendVerification(ctx context.Context, userID int64) error {
+	var u user
+	var verified sql.NullString
+	if err := s.db.QueryRowContext(ctx, `SELECT id,email,display_name,email_verified_at FROM users WHERE id=?`, userID).Scan(&u.ID, &u.Email, &u.DisplayName, &verified); err != nil {
+		return fmt.Errorf("load verification user: %w", err)
+	}
+	if verified.Valid {
+		return nil
+	}
+	return s.sendAuthToken(ctx, u, "email_verification", "/verify-email?token=", "Potwierdź adres e-mail")
+}
+
+func (s *authService) sendAuthToken(ctx context.Context, u user, purpose, path, subject string) error {
+	now := s.now().UTC()
+	var last string
+	err := s.db.QueryRowContext(ctx, `SELECT created_at FROM auth_tokens WHERE user_id=? AND purpose=? ORDER BY created_at DESC LIMIT 1`, u.ID, purpose).Scan(&last)
+	if err == nil {
+		created, parseErr := time.Parse(time.RFC3339Nano, last)
+		if parseErr != nil {
+			return fmt.Errorf("parse auth token creation: %w", parseErr)
+		}
+		if now.Sub(created) < s.resendInterval {
+			return errAuthRateLimited
+		}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("inspect auth token rate: %w", err)
+	}
+	raw := make([]byte, 32)
+	if _, err := s.random(raw); err != nil {
+		return fmt.Errorf("generate auth token: %w", err)
+	}
+	token := base64.RawURLEncoding.EncodeToString(raw)
+	hash := sha256.Sum256([]byte(token))
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO auth_tokens(user_id,purpose,token_hash,expires_at,created_at) VALUES(?,?,?,?,?)`, u.ID, purpose, hash[:], now.Add(s.tokenTTL).Format(time.RFC3339Nano), now.Format(time.RFC3339Nano)); err != nil {
+		return fmt.Errorf("store auth token: %w", err)
+	}
+	link := strings.TrimRight(s.baseURL, "/") + path + url.QueryEscape(token)
+	if err := s.mailer.Send(ctx, emailMessage{To: u.Email, Subject: subject, Text: subject + ": " + link}); err != nil {
+		if _, deleteErr := s.db.ExecContext(ctx, `DELETE FROM auth_tokens WHERE token_hash=?`, hash[:]); deleteErr != nil {
+			return fmt.Errorf("send authentication email: %v; remove unsent auth token: %w", err, deleteErr)
+		}
+		return fmt.Errorf("send authentication email: %w", err)
+	}
+	return nil
+}
+
+func (s *authService) resetPassword(ctx context.Context, token, password string) error {
+	return s.consumeAuthToken(ctx, token, "password_reset", func(tx *sql.Tx, userID int64, now string) error {
+		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		if err != nil {
+			return fmt.Errorf("hash new password: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE users SET password_hash=?,updated_at=? WHERE id=?`, string(hash), now, userID); err != nil {
+			return fmt.Errorf("update password: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE user_sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL`, now, userID); err != nil {
+			return fmt.Errorf("revoke sessions: %w", err)
+		}
+		return nil
+	})
+}
+
+func (s *authService) verifyEmail(ctx context.Context, token string) error {
+	return s.consumeAuthToken(ctx, token, "email_verification", func(tx *sql.Tx, userID int64, now string) error {
+		_, err := tx.ExecContext(ctx, `UPDATE users SET email_verified_at=COALESCE(email_verified_at,?),updated_at=? WHERE id=?`, now, now, userID)
+		return err
+	})
+}
+
+func (s *authService) consumeAuthToken(ctx context.Context, token, purpose string, apply func(*sql.Tx, int64, string) error) error {
+	decoded, err := base64.RawURLEncoding.DecodeString(token)
+	if err != nil || len(decoded) != 32 {
+		return errInvalidAuthToken
+	}
+	hash := sha256.Sum256([]byte(token))
+	now := s.now().UTC()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin auth token transaction: %w", err)
+	}
+	defer tx.Rollback()
+	var id, userID int64
+	var expires string
+	err = tx.QueryRowContext(ctx, `SELECT id,user_id,expires_at FROM auth_tokens WHERE token_hash=? AND purpose=? AND consumed_at IS NULL`, hash[:], purpose).Scan(&id, &userID, &expires)
+	if errors.Is(err, sql.ErrNoRows) {
+		return errInvalidAuthToken
+	}
+	if err != nil {
+		return fmt.Errorf("load auth token: %w", err)
+	}
+	expiresAt, err := time.Parse(time.RFC3339Nano, expires)
+	if err != nil {
+		return fmt.Errorf("parse auth token expiry: %w", err)
+	}
+	if !now.Before(expiresAt) {
+		return errInvalidAuthToken
+	}
+	nowText := now.Format(time.RFC3339Nano)
+	result, err := tx.ExecContext(ctx, `UPDATE auth_tokens SET consumed_at=? WHERE id=? AND consumed_at IS NULL`, nowText, id)
+	if err != nil {
+		return fmt.Errorf("consume auth token: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil || rows != 1 {
+		return errInvalidAuthToken
+	}
+	if err := apply(tx, userID, nowText); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE auth_tokens SET consumed_at=? WHERE user_id=? AND purpose=? AND consumed_at IS NULL`, nowText, userID, purpose); err != nil {
+		return fmt.Errorf("invalidate auth tokens: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit auth token: %w", err)
+	}
+	return nil
 }
 
 func (s *authService) createSession(ctx context.Context, userID int64) (string, time.Time, error) {

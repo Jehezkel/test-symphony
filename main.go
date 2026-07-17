@@ -44,6 +44,14 @@ func main() {
 		sessionTTL = time.Duration(hours) * time.Hour
 	}
 	auth := newAuthService(db, sessionTTL, os.Getenv("APP_ENV") == "production")
+	mailer, err := emailSenderFromEnv()
+	if err != nil {
+		log.Fatalf("initialize email provider: %v", err)
+	}
+	auth.mailer = mailer
+	if baseURL := os.Getenv("APP_BASE_URL"); baseURL != "" {
+		auth.baseURL = baseURL
+	}
 	if authEmail != "" {
 		if err := auth.ensureUser(context.Background(), authEmail, os.Getenv("AUTH_DISPLAY_NAME"), authPassword); err != nil {
 			log.Fatalf("initialize authentication: %v", err)
