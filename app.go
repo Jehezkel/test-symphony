@@ -130,6 +130,10 @@ func newAuthenticatedApp(products *productStore, allegro *allegroService, auth *
 	protected.HandleFunc("GET /products", a.index)
 	protected.HandleFunc("GET /onboarding", a.onboarding)
 	protected.HandleFunc("POST /logout", a.logout)
+	protected.HandleFunc("GET /account", a.accountSettings)
+	protected.HandleFunc("POST /account/password", a.changePassword)
+	protected.HandleFunc("POST /account/sessions/revoke", a.revokeOtherSessions)
+	protected.HandleFunc("POST /account/delete", a.deleteAccount)
 	protected.HandleFunc("POST /verify-email/resend", a.resendVerification)
 	protected.HandleFunc("POST /products", a.createProduct)
 	protected.HandleFunc("GET /products/{id}/edit", a.editProduct)
@@ -490,6 +494,10 @@ func (a *app) allegroCallback(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) allegroDisconnect(w http.ResponseWriter, r *http.Request) {
+	if a.auth != nil && !validRequestCSRF(r) {
+		http.Error(w, "invalid CSRF token", http.StatusForbidden)
+		return
+	}
 	message := "Konto Allegro zostało rozłączone."
 	if a.allegro != nil {
 		if err := a.allegro.disconnect(r.Context(), requestUserID(r)); err != nil {
