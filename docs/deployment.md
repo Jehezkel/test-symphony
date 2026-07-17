@@ -12,12 +12,16 @@ Dokploy tracks `Jehezkel/test-symphony` on the `develop` branch through the exis
 
 - Application: <http://app-bypass-haptic-sensor-4ooyls-ed57d3-85-215-207-20.traefik.me>
 - Health check: <http://app-bypass-haptic-sensor-4ooyls-ed57d3-85-215-207-20.traefik.me/health>
-- Required environment variables for Allegro OAuth: `ALLEGRO_CLIENT_ID`,
-  `ALLEGRO_CLIENT_SECRET`, `ALLEGRO_REDIRECT_URL`, and
+- Required environment selector: `ALLEGRO_ENVIRONMENT=production|sandbox`
+  (defaults safely to `sandbox`; development must explicitly use `sandbox`).
+  The selector atomically chooses OAuth, token, and REST API hosts. Required
+  OAuth variables for the selected environment are
+  `ALLEGRO_<ENV>_CLIENT_ID`, `ALLEGRO_<ENV>_CLIENT_SECRET`,
+  `ALLEGRO_<ENV>_REDIRECT_URL`, and
   `ALLEGRO_TOKEN_ENCRYPTION_KEY` (base64-encoded 32-byte key). Store their real
   values only in Dokploy; never copy them into repository files or deployment
-  logs. `ALLEGRO_AUTHORIZE_URL`, `ALLEGRO_TOKEN_URL`, and `ALLEGRO_API_URL` are
-  optional and select production Allegro by default. `PORT` defaults to `8080`;
+  logs. Keep the `PRODUCTION` and `SANDBOX` credential sets separate. `PORT`
+  defaults to `8080`;
   `ALLEGRO_SYNC_INTERVAL_MINUTES` is optional and defaults to `15` (`0`
   disables periodic synchronization);
   `DATABASE_PATH` defaults to `/data/app.db` in the image. The image declares
