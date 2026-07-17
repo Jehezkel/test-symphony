@@ -197,7 +197,11 @@ func (a *app) loginPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 		return
 	}
-	a.renderAuth(w, r, authFormData{Mode: "login", Next: safeNext(r.URL.Query().Get("next"))}, http.StatusOK)
+	data := authFormData{Mode: "login", Next: safeNext(r.URL.Query().Get("next"))}
+	if r.URL.Query().Get("registered") == "1" {
+		data.Success = "Konto zostało utworzone. Możesz się teraz zalogować."
+	}
+	a.renderAuth(w, r, data, http.StatusOK)
 }
 
 func (a *app) login(w http.ResponseWriter, r *http.Request) {
@@ -251,20 +255,15 @@ func (a *app) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		http.Error(w, "create account", http.StatusInternalServerError)
+		data.GeneralError = "Nie udało się utworzyć konta. Spróbuj ponownie za chwilę."
+		a.renderAuth(w, r, data, http.StatusInternalServerError)
 		return
 	}
 	if err := a.auth.sendVerification(r.Context(), u.ID); err != nil && !errors.Is(err, errAuthRateLimited) {
-		http.Error(w, "send verification", http.StatusInternalServerError)
-		return
+		// Account creation succeeded. Verification can be requested again after login,
+		// so an email delivery failure must not turn this into an ambiguous result.
 	}
-	token, expires, err := a.auth.createSession(r.Context(), u.ID)
-	if err != nil {
-		http.Error(w, "create session", http.StatusInternalServerError)
-		return
-	}
-	http.SetCookie(w, a.auth.cookie(token, expires))
-	http.Redirect(w, r, "/onboarding", http.StatusSeeOther)
+	http.Redirect(w, r, "/login?registered=1", http.StatusSeeOther)
 }
 
 func (a *app) forgotPasswordPage(w http.ResponseWriter, r *http.Request) {
