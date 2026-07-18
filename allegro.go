@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-const allegroScope = "allegro:api:sale:offers:read allegro:api:orders:read allegro:api:billing:read"
+const allegroScope = "allegro:api:sale:offers:read allegro:api:orders:read allegro:api:billing:read allegro:api:profile:read"
 
 var (
 	errAllegroNotConfigured = errors.New("Allegro integration is not configured")
