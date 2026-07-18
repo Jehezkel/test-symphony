@@ -27,13 +27,31 @@ func testAllegro(t *testing.T, api http.Handler) (*allegroService, http.Handler,
 	return s, newApp(newProductStore(db), s), server
 }
 
+func TestAllegroOAuthAuthorizationURLIncludesRequiredScopes(t *testing.T) {
+	s, _, _ := testAllegro(t, http.NotFoundHandler())
+	location, err := s.begin(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := url.Parse(location)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "allegro:api:sale:offers:read allegro:api:orders:read allegro:api:billing:read allegro:api:profile:read"
+	if got := u.Query().Get("scope"); got != want {
+		t.Fatalf("OAuth scope = %q, want %q", got, want)
+	}
+}
+
 func TestAllegroOAuthCallbackStoresEncryptedTokens(t *testing.T) {
 	var authorization string
 	s, handler, _ := testAllegro(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/token" {
 			authorization = r.Header.Get("Authorization")
-			if err := r.ParseForm(); err != nil || r.Form.Get("code") != "valid-code" {
-				t.Errorf("unexpected token form: %v", r.Form)
+			if err := r.ParseForm(); err != nil {
+				t.Error("could not parse token form")
+			} else if r.Form.Get("code") != "valid-code" {
+				t.Error("token form did not contain the expected authorization code")
 			}
 			w.Header().Set("Content-Type", "application/json")
 			io.WriteString(w, `{"access_token":"access-secret","refresh_token":"refresh-secret","expires_in":3600}`)
