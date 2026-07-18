@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -15,6 +16,7 @@ type app struct {
 	allegro           *allegroService
 	profits           *profitabilityEngine
 	auth              *authService
+	logger            *log.Logger
 	enforceOnboarding bool
 }
 
@@ -70,7 +72,7 @@ func passwordMinLength(mode string) string {
 }
 
 func newApp(products *productStore, services ...*allegroService) http.Handler {
-	a := &app{products: products, profits: newProfitabilityEngine(products.db)}
+	a := &app{products: products, profits: newProfitabilityEngine(products.db), logger: log.Default()}
 	if len(services) > 0 {
 		a.allegro = services[0]
 	}
@@ -112,7 +114,7 @@ func requestUserID(r *http.Request) int64 {
 }
 
 func newAuthenticatedApp(products *productStore, allegro *allegroService, auth *authService) http.Handler {
-	a := &app{products: products, profits: newProfitabilityEngine(products.db), allegro: allegro, auth: auth, enforceOnboarding: true}
+	a := &app{products: products, profits: newProfitabilityEngine(products.db), allegro: allegro, auth: auth, logger: log.Default(), enforceOnboarding: true}
 	public := http.NewServeMux()
 	public.HandleFunc("GET /health", a.health)
 	public.HandleFunc("GET /{$}", a.landing)
@@ -335,6 +337,7 @@ func (a *app) resendVerification(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		a.logger.Printf("resend verification failed: stage=%s", smtpErrorStage(err))
 		http.Error(w, "resend verification", http.StatusInternalServerError)
 		return
 	}
