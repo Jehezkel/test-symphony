@@ -28,6 +28,27 @@ func (discardEmailSender) Send(context.Context, emailMessage) error { return nil
 
 type smtpEmailSender struct {
 	host, port, username, password, from string
+	dialContext                          func(context.Context, string) (net.Conn, error)
+}
+
+type smtpSendError struct {
+	stage string
+	err   error
+}
+
+func (e *smtpSendError) Error() string { return e.stage + ": " + e.err.Error() }
+func (e *smtpSendError) Unwrap() error { return e.err }
+
+func smtpError(stage string, err error) error {
+	return &smtpSendError{stage: stage, err: err}
+}
+
+func smtpErrorStage(err error) string {
+	var sendErr *smtpSendError
+	if errors.As(err, &sendErr) {
+		return sendErr.stage
+	}
+	return "internal"
 }
 
 func emailSenderFromEnv() (emailSender, error) {
@@ -53,38 +74,47 @@ func emailSenderFromEnv() (emailSender, error) {
 
 func (s *smtpEmailSender) Send(ctx context.Context, message emailMessage) error {
 	address := net.JoinHostPort(s.host, s.port)
-	dialer := &tls.Dialer{NetDialer: &net.Dialer{}}
-	conn, err := dialer.DialContext(ctx, "tcp", address)
+	dialContext := s.dialContext
+	if dialContext == nil {
+		dialer := &tls.Dialer{NetDialer: &net.Dialer{}}
+		dialContext = func(ctx context.Context, address string) (net.Conn, error) {
+			return dialer.DialContext(ctx, "tcp", address)
+		}
+	}
+	conn, err := dialContext(ctx, address)
 	if err != nil {
-		return fmt.Errorf("connect to SMTP: %w", err)
+		return smtpError("connect", err)
 	}
 	defer conn.Close()
 	client, err := smtp.NewClient(conn, s.host)
 	if err != nil {
-		return fmt.Errorf("initialize SMTP: %w", err)
+		return smtpError("initialize", err)
 	}
 	defer client.Close()
 	if s.username != "" {
 		if err := client.Auth(smtp.PlainAuth("", s.username, s.password, s.host)); err != nil {
-			return fmt.Errorf("authenticate SMTP: %w", err)
+			return smtpError("authenticate", err)
 		}
 	}
 	if err := client.Mail(s.from); err != nil {
-		return fmt.Errorf("set SMTP sender: %w", err)
+		return smtpError("sender", err)
 	}
 	if err := client.Rcpt(message.To); err != nil {
-		return fmt.Errorf("set SMTP recipient: %w", err)
+		return smtpError("recipient", err)
 	}
 	w, err := client.Data()
 	if err != nil {
-		return fmt.Errorf("start SMTP message: %w", err)
+		return smtpError("data_start", err)
 	}
 	body := "From: " + s.from + "\r\nTo: " + message.To + "\r\nSubject: " + message.Subject + "\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n" + message.Text
 	if _, err := w.Write([]byte(body)); err != nil {
-		return fmt.Errorf("write SMTP message: %w", err)
+		return smtpError("data_write", err)
 	}
 	if err := w.Close(); err != nil {
-		return fmt.Errorf("finish SMTP message: %w", err)
+		return smtpError("data_commit", err)
 	}
-	return client.Quit()
+	// A successful DATA close means the server accepted the message. QUIT is
+	// only connection cleanup and cannot turn that accepted delivery into an error.
+	_ = client.Quit()
+	return nil
 }
